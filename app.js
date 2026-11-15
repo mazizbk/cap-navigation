@@ -39,7 +39,8 @@ const S = {
   hazards: [], hazardDone: {}, hazardMarkers: [], overAt: 0, // alertes sur le trajet (voir hazards.js)
   carScreen: readStore('carScreen') === '1',
   streetOn: false, // photos de rue libres (Panoramax) : retirées, trop inégales. Remplacées par Google Street View.
-  gkey: readStore('gkey'), gsvStep: -1, // clé Google Maps de l'utilisateur (facultative)
+  // Clé Google Maps : celle du fichier config.js (installée par tools/set_key.ps1), sinon celle saisie sur l'appareil.
+  gkey: (window.CAP_CONFIG && window.CAP_CONFIG.googleKey) || readStore('gkey'), gsvStep: -1,
   real: readStore('view') !== 'plan', buildingLayer: '', topH: 0,
   raf: 0, lastT: 0, lastUi: 0, watchId: null, wake: null,
   manKey: '',
@@ -1401,7 +1402,9 @@ function updateGoogleView(i, next, toMan) {
 
 // Réglage de la clé Google Maps.
 $('gkey').value = S.gkey;
-$('gkey-state').textContent = S.gkey ? 'Une clé est enregistrée sur cet appareil.' : 'Aucune clé enregistrée sur cet appareil.';
+$('gkey-state').textContent = window.CAP_CONFIG && window.CAP_CONFIG.googleKey
+  ? 'La clé est fournie par l\'application : rien à saisir.'
+  : S.gkey ? 'Une clé est enregistrée sur cet appareil.' : 'Aucune clé enregistrée sur cet appareil.';
 function saveGoogleKey(value) {
   S.gkey = value.trim();
   $('gkey').value = S.gkey;
