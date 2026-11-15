@@ -179,8 +179,9 @@ function updateHazards() {
       S.hazardDone[active.id] = true;
       speakAlert('Attention, zone de danger.' + (active.limit ? ' Limite ' + active.limit + ' kilomètres heure.' : ''));
     }
-    if (over && performance.now() - S.overAt > 9000) {
-      S.overAt = performance.now();
+    // Une seule alerte de vitesse toutes les 30 s, partagée avec le panneau de limite (pas de doublon).
+    if (over && performance.now() - Math.max(S.overAt || 0, S.speedSaidAt || 0) > 30000) {
+      S.overAt = S.speedSaidAt = performance.now();
       speakAlert('Ralentissez. Limite ' + active.limit + '.');
     }
   } else {

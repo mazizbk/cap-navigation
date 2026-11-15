@@ -855,6 +855,22 @@ function laneAdvice(lanes) {
   return count === 1 ? 'Prenez la voie du milieu' : 'Prenez l\'une des voies du milieu';
 }
 
+// Sortie ou embranchement de voie rapide : on roule vite (plus de 70 km/h) ou sur une route A / N,
+// et la prochaine manœuvre est une bretelle de sortie ou un embranchement. C'est là qu'on se trompe le plus.
+function exitInfo(k, next) {
+  const here = S.route.steps[k - 1] || {};
+  const fast = S.speed > 19 || /^[AN] ?\d/.test(here.ref || '') || /^[AN] ?\d/.test(here.name || '');
+  if (!fast || !next || !/off ramp|fork/.test(next.type)) return null;
+  const left = (next.modifier || '').includes('left');
+  return {
+    exit: next.type === 'off ramp',
+    no: next.exitNo || '',
+    dir: next.dest[0] || next.name || '',
+    side: left ? 'gauche' : 'droite',
+    motorway: /^A ?\d/.test(here.ref || '') || /^A ?\d/.test(here.name || ''),
+  };
+}
+
 // Distance dite à voix haute : arrondie, comme on la dirait (« 200 mètres », pas « 187 mètres »).
 function roundSpoken(m) {
   if (m >= 1000) return fmtDistSpoken(m);
@@ -885,6 +901,25 @@ function prefetchStep(k) {
 function announce(k, next, toMan) {
   prefetchStep(k);
   const done = S.spoken[k] || 0;
+  const ex = exitInfo(k, next);
+  if (ex) {
+    const what = ex.exit ? 'prenez la sortie' + (ex.no ? ' ' + ex.no : '') : lowerFirst(next.act || next.text);
+    const dir = ex.dir ? ', direction ' + ex.dir : '';
+    const lane = laneAdvice(next.lanes) || 'Placez-vous sur la voie de ' + ex.side;
+    const now = Math.max(30, S.speed * 2.5);
+    let flag = 0;
+    let text = '';
+    if (toMan <= now) { flag = 5; text = ex.exit ? 'Sortez maintenant, à ' + ex.side : (next.act || next.text); }
+    else if (toMan <= 650) { flag = 4; text = 'Dans 500 mètres, ' + what + '. Voie de ' + ex.side; }
+    else if (toMan <= 1200) { flag = 3; text = 'Dans 1 kilomètre, ' + what + dir; }
+    else if (toMan <= 2300) { flag = 2; text = 'Dans 2 kilomètres, ' + what + dir + '. ' + lane; }
+    else if (toMan > 3000 && toMan < 30000 && !done) { flag = 1; const here = S.route.steps[k - 1]; text = 'Continuez' + (here && here.name ? ' sur ' + here.name : '') + ' pendant ' + fmtDistSpoken(toMan); }
+    if (!flag || done >= flag) return;
+    S.spoken[k] = flag;
+    S.lastSaid = text;
+    speak(text, flag === 5, [k]);
+    return;
+  }
   // Un simple changement de nom de rue n'est pas une décision : on ne parle pas, pour que les vraies consignes ressortent.
   if (!isTurn(next) && (next.type === 'new name' || next.type === 'continue')) return;
   let near = clamp(S.speed * 11, 150, 450);
@@ -1239,15 +1274,28 @@ function updateUi(i, next, toMan) {
     setHtml('man-road', next.road && next.act !== next.text ? escapeHtml(next.road) : '');
     // Panneau façon signalisation : numéro de sortie et directions (surtout sur voie rapide et autoroute).
     const sign = (next.exitNo ? '<b>Sortie ' + escapeHtml(next.exitNo) + '</b>' : '') + next.dest.slice(next.name ? 0 : 1).map((d) => '<span>' + escapeHtml(d) + '</span>').join('');
-    setHtml('sign', sign);
-    $('sign').hidden = !sign;
+    const ex = exitInfo(i + 1, next);
+    const exitOn = !!ex && toMan < 2300;
+    $('banner').classList.toggle('exit', exitOn);
+    $('banner').classList.toggle('exit-a', exitOn && ex.motorway);
+    if (exitOn) {
+      // Grand panneau : SORTIE 12 + directions en gros, et la voie où se placer.
+      const big = (ex.exit ? '<b>SORTIE' + (next.exitNo ? ' ' + escapeHtml(next.exitNo) : '') + '</b>' : '') +
+        next.dest.map((d) => '<span>' + escapeHtml(d) + '</span>').join('') +
+        '<em>Voie de ' + ex.side + (ex.side === 'droite' ? ' ➜' : ' ⬅') + '</em>';
+      setHtml('sign', big);
+      $('sign').hidden = false;
+    } else {
+      setHtml('sign', sign);
+      $('sign').hidden = !sign;
+    }
     // Voies : affichées tôt (2 km sur voie rapide, 600 m ailleurs) pour avoir le temps de se placer,
     // avec la consigne en clair à côté des flèches.
     const fast = /ramp|fork|merge/.test(next.type) || S.speed > 22;
     const advice = placeAdvice(next);
     const lanes = toMan < (fast ? 2000 : 600)
       ? (next.lanes && next.lanes.length > 1 ? '<div class="lane-row">' + lanesHtml(next.lanes) + '</div>' : '') +
-        (advice && next.lanes && next.lanes.length > 1 ? '<div class="lane-advice">' + escapeHtml(advice) + '</div>' : '')
+        (advice && next.lanes && next.lanes.length > 1 && !$('banner').classList.contains('exit') ? '<div class="lane-advice">' + escapeHtml(advice) + '</div>' : '')
       : '';
     setHtml('lanes', lanes);
     $('lanes').hidden = !lanes;
@@ -1255,7 +1303,7 @@ function updateUi(i, next, toMan) {
 
     // Jauge d'approche : elle se remplit sur les 300 derniers mètres et devient blanche quand c'est maintenant.
     const bar = $('approach-fill');
-    bar.style.width = (clamp(1 - toMan / 300, 0, 1) * 100).toFixed(0) + '%';
+    bar.style.width = (clamp(1 - toMan / ($('banner').classList.contains('exit') ? 2300 : 300), 0, 1) * 100).toFixed(0) + '%';
     bar.classList.toggle('now', toMan < 40);
 
     // Dans un rond-point : décompte en direct des sorties à laisser passer.
@@ -1371,6 +1419,7 @@ function arrive() {
   cancelAnimationFrame(S.raf);
   setHtml('man-icon', stepIcon({ type: 'arrive' }, 80));
   $('sign').hidden = true;
+  $('banner').classList.remove('exit', 'exit-a');
   setHtml('man-dist', 'Arrivée');
   setHtml('man-text', escapeHtml(S.to?.label || 'Vous êtes arrivé'));
   setHtml('man-road', '');
@@ -1808,10 +1857,14 @@ function updateSpeedLimit() {
   if (over) S.overSince = S.overSince || now; else S.overSince = 0;
   const alarm = over && now - S.overSince > 2500; // on ne crie pas pour un dépassement d'une seconde
   document.body.classList.toggle('overspeed', alarm);
-  if (alarm && now - (S.overSaid || -1e9) > 60000 && !voiceBusy()) { S.overSaid = now; speak('Attention, limité à ' + lim + '.'); }
+  // Pas de message de vitesse quand une consigne de direction arrive : la direction passe avant (une info à la fois).
+  const st = S.route.steps[stepIndexAt(S.d) + 1];
+  const busyAhead = st && (st.start - S.d < (exitInfo(stepIndexAt(S.d) + 1, st) ? 2400 : 350));
+  const quiet = busyAhead || voiceBusy() || now - (S.speedSaidAt || -1e9) < 60000;
+  if (alarm && !quiet) { S.speedSaidAt = now; speak('Attention, limité à ' + lim + '.'); }
   // Nouvelle limite plus basse juste devant : on la dit une fois (entrée d'agglomération, travaux…).
   if (lim !== S.lastLimit) {
-    if (S.lastLimit && lim < S.lastLimit && kmh > lim + margin && !voiceBusy()) speak('Limite ' + lim + '.');
+    if (S.lastLimit && lim < S.lastLimit && kmh > lim + margin && !quiet) { S.speedSaidAt = now; speak('Limite ' + lim + '.'); }
     S.lastLimit = lim;
   }
 }

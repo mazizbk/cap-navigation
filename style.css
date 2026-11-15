@@ -703,3 +703,16 @@ body.night { background: #0d141f; }
 body.night .panel { background: rgba(8, 12, 20, 0.94); }
 body.night #banner #man-dist, body.night #banner #man-text { color: #e8edf5; }
 body.night .btn-primary { filter: brightness(0.85); }
+
+/* ---------- sortie de voie rapide : le bandeau devient un panneau de signalisation (dès 2 km) ---------- */
+#banner.exit { background: #0f6b3a; border: 3px solid #fff; }          /* voie express : vert, comme les panneaux */
+#banner.exit.exit-a { background: #1446a8; }                             /* autoroute : bleu */
+#banner.exit #man-text, #banner.exit #man-dist { color: #fff; }
+#banner.exit #man-road { color: #e6f0ff; }
+#banner.exit #sign { margin-top: 12px; gap: 8px; font-size: 20px; }
+#banner.exit #sign b { background: #fff; color: #10306f; font-size: 20px; padding: 4px 12px; letter-spacing: 0.04em; }
+#banner.exit #sign span { background: transparent; border: 2px solid rgba(255, 255, 255, 0.9); color: #fff; font-size: 20px; padding: 4px 12px; }
+#banner.exit #sign em { flex-basis: 100%; font-style: normal; font-weight: 800; font-size: 22px; color: #fff; background: rgba(0, 0, 0, 0.22);
+  border-radius: 10px; padding: 8px 12px; text-align: center; }
+#banner.exit #approach { background: rgba(255, 255, 255, 0.25); }
+#banner.exit #approach-fill { background: #fff; }
