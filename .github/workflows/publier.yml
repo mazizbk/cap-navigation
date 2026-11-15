@@ -33,7 +33,8 @@ jobs:
       - name: Écrire la configuration (clé Google Maps)
         env:
           GOOGLE_MAPS_KEY: ${{ secrets.GOOGLE_MAPS_KEY }}
-        run: printf "window.CAP_CONFIG = { googleKey: '%s' };\n" "$GOOGLE_MAPS_KEY" > config.js
+        run: |
+          printf "window.CAP_CONFIG = { googleKey: '%s' };\n" "$GOOGLE_MAPS_KEY" > config.js
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
