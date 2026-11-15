@@ -728,3 +728,30 @@ body.has-live #fuel-btn { display: none; }                 /* la station reste a
 #banner.exit #lanes { display: none; }                      /* « Voie de droite » dit déjà où se placer */
 #gsv.live { border-radius: 18px; overflow: hidden; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); }
 #gsv.live #gsv-label { font-size: 13px; padding: 7px 12px; }
+
+/* ===== La carte d'abord : photo et panneaux plus compacts pendant le guidage ===== */
+#gsv-live { height: min(17dvh, 140px); min-height: 110px; }
+#gsv.live #gsv-label { font-size: 12px; padding: 5px 10px; }
+body.has-live #then { display: none; }                      /* une seule chose à lire à la fois */
+/* Panneau de sortie plus compact */
+#banner.exit { border-width: 2px; }
+#banner.exit #man-dist { font-size: 32px; }
+#banner.exit #man-text { font-size: 16px; }
+#banner.exit #man-road { display: none; }
+#banner.exit #sign { margin-top: 8px; gap: 6px; font-size: 15px; }
+#banner.exit #sign b, #banner.exit #sign span { font-size: 15px; padding: 2px 9px; }
+#banner.exit #sign em { font-size: 16px; padding: 5px 10px; }
+
+/* ===== Équilibre pendant la photo : bandeau compact (une ligne), photo, puis au moins la moitié de l'écran pour la carte ===== */
+body.has-live #banner { padding: 8px 12px; row-gap: 4px; }
+body.has-live #man-icon svg { width: 46px; height: 46px; }
+body.has-live #man-dist { font-size: 26px; }
+body.has-live #man-text { font-size: 15px; margin-top: 2px; }
+body.has-live #man-road, body.has-live #lanes { display: none; }
+body.has-live #approach { height: 4px; margin-top: 4px; }
+/* Panneau de sortie : SORTIE + la direction principale + la voie, sur une ou deux lignes au plus */
+body.has-live #banner.exit #sign { margin-top: 4px; }
+body.has-live #banner.exit #sign span:nth-of-type(n+2) { display: none; }
+body.has-live #banner.exit #sign em { flex-basis: auto; flex: 1; font-size: 14px; padding: 3px 8px; }
+/* Alerte plus discrète pendant la manœuvre (elle reste visible) */
+body.has-live #alert { padding: 6px 10px; font-size: 13px; }

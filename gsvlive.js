@@ -161,7 +161,7 @@ const GLive = (() => {
     let k = i + 1;
     if (i > 0 && isDecision(cur) && S.d - cur.start < 40) { target = cur; k = i; }
     const fast = target && exitInfo(k, target);
-    const reach = fast ? 800 : 300;
+    const reach = fast ? 600 : 220; // photo seulement pour l'approche finale : la carte reste l'écran principal
     const dist = target ? target.start - S.d : 1e9;
     const show = target && isDecision(target) && target.type !== 'arrive' && dist < reach;
     if (!show) { if (step !== -1) { step = -1; $('gsv').hidden = true; $('gsv').classList.remove('live'); document.body.classList.remove('has-live'); } return true; }
