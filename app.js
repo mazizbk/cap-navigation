@@ -39,6 +39,7 @@ const S = {
   photo: null, photoShown: false,
   hazards: [], hazardDone: {}, hazardMarkers: [], overAt: 0, // alertes sur le trajet (voir hazards.js)
   carScreen: readStore('carScreen') === '1',
+  avoidTolls: readStore('avoidTolls') === '1', avoidMotorways: readStore('avoidMotorways') === '1', alts: [],
   gsvOn: readStore('gsvOn') !== '0', // aperçu photo du prochain carrefour pendant le guidage
   streetOn: false, // photos de rue libres (Panoramax) : retirées, trop inégales. Remplacées par Google Street View.
   // Clé Google Maps : celle du fichier config.js (installée par tools/set_key.ps1), sinon celle saisie sur l'appareil.
@@ -550,25 +551,46 @@ async function planRoute() {
     const from = await resolvePlace('from');
     if (!from.gps && $('to').value.trim() && !S.to) await new Promise((r) => setTimeout(r, 1100)); // 1 requête/s max chez Nominatim
     const to = await resolvePlace('to');
-    S.route = await bestRoute(from, to); // le plus rapide, bouchons connus compris (voir traffic.js)
+    S.route = await bestRoute(from, to); // le plus rapide, trafic connu compris (voir traffic.js)
+    S.alts = S.route.alts || [S.route];
     S.photo = null;
-    drawRoute();
     startMarker.setLngLat([from.lon, from.lat]).addTo(map);
     destMarker.setLngLat([to.lon, to.lat]).addTo(map);
-    fitRoute();
-    $('summary-text').innerHTML =
-      '<b>' + fmtDuration(S.route.duration + (S.route.jamDelay || 0)) + '</b> ' + (S.route.trafficKnown ? (S.route.trafficSource === 'TomTom' ? 'trafic compris' : 'bouchons de Nantes compris') : 'hors bouchons') + ' · ' + fmtDist(S.route.total) + '<br><span>vers ' + escapeHtml(to.label) + '</span>';
+    showSummary();
     $('summary-hazards').textContent = '';
-    $('summary-traffic').textContent = trafficSummary();
     $('summary').hidden = false;
     setStatus('');
-    loadPhoto(to); // en arrière-plan, pour l'afficher à l'approche
+    loadPhoto(to); // en arrière-plan
     loadHazards(); // idem : alertes trafic et zones de danger
+    if (typeof afterPlan === 'function') afterPlan(); // récents, enregistrer comme Domicile/Travail
     $('resume-nav').hidden = true;
     saveTrip(false);
   } catch (e) {
     setStatus(e.message || 'Erreur réseau.', true);
   }
+}
+
+// Affiche le trajet retenu : tracé, durée, distance, état du trafic et choix entre les variantes.
+function showSummary() {
+  const R = S.route;
+  drawRoute();
+  fitRoute();
+  const time = R.viaTomTom ? R.duration : R.duration + (R.jamDelay || 0);
+  const label = R.viaTomTom || R.trafficSource === 'TomTom' ? 'trafic compris' : R.trafficKnown ? 'bouchons de Nantes compris' : 'hors bouchons';
+  $('summary-text').innerHTML = '<b>' + fmtDuration(time) + '</b> ' + label + ' · ' + fmtDist(R.total) +
+    '<br><span>vers ' + escapeHtml(S.to ? S.to.label : '') + '</span>';
+  $('summary-traffic').textContent = trafficSummary();
+  renderRouteChoices();
+}
+
+// Options d'itinéraire (prises en compte par TomTom).
+for (const [id, key] of [['avoid-tolls', 'avoidTolls'], ['avoid-motorways', 'avoidMotorways']]) {
+  $(id).checked = S[key];
+  $(id).addEventListener('change', (e) => {
+    S[key] = e.target.checked;
+    try { localStorage.setItem(key, S[key] ? '1' : '0'); } catch { /* stockage indisponible */ }
+    if (S.to || $('to').value.trim()) planRoute(); // on recalcule tout de suite avec la nouvelle option
+  });
 }
 
 function drawRoute() {
@@ -728,8 +750,42 @@ function stopVoice() {
   try { speechSynthesis.cancel(); } catch { /* pas de synthèse vocale */ }
 }
 
-function speak(text, urgent) {
+// Meilleure voix française installée sur l'appareil (les voix « améliorées » ou « premium » d'abord).
+let frVoice = null;
+function pickVoice() {
+  if (!('speechSynthesis' in window)) return;
+  const score = (v) => (/premium|enhanced|am.lior|siri/i.test(v.name + ' ' + v.voiceURI) ? 4 : 0) + (/^fr[-_]FR/i.test(v.lang) ? 2 : 0) +
+    (v.localService ? 1 : 0) - (/compact/i.test(v.voiceURI || '') ? 1 : 0);
+  frVoice = speechSynthesis.getVoices().filter((v) => /^fr/i.test(v.lang)).sort((a, b) => score(b) - score(a))[0] || null;
+}
+if ('speechSynthesis' in window) { pickVoice(); speechSynthesis.addEventListener('voiceschanged', pickVoice); }
+
+// Met une consigne écrite sous une forme agréable à entendre : « vers Rue du Minio » devient « vers la rue du Minio »,
+// « sur D 29 » devient « sur la D 29 », les abréviations sont dites en entier.
+const ROAD_WORDS = { rue: 'la rue', avenue: 'l\'avenue', boulevard: 'le boulevard', route: 'la route', chemin: 'le chemin', place: 'la place',
+  impasse: 'l\'impasse', 'allée': 'l\'allée', quai: 'le quai', pont: 'le pont', voie: 'la voie', cours: 'le cours', rocade: 'la rocade',
+  'périphérique': 'le périphérique', 'pénétrante': 'la pénétrante', passage: 'le passage', square: 'le square', esplanade: 'l\'esplanade' };
+function sayable(text) {
+  let t = String(text).replace(/\s*;.*?(?=[,.]|$)/g, ''); // plusieurs noms pour une même route : on garde le premier
+  t = t.replace(/\b(sur|vers) ([A-Za-zÀ-ÿ-]+)/g, (m, prep, word) => {
+    const w = ROAD_WORDS[word.toLowerCase()];
+    return w ? prep + ' ' + w : m;
+  });
+  t = t.replace(/\b(sur|vers) A ?(\d+)/g, '$1 l\'A $2').replace(/\b(sur|vers) ([DNMCE]) ?(\d+)/g, '$1 la $2 $3');
+  t = t.replace(/\bDr\.? /g, 'Docteur ').replace(/\bSt\.? /g, 'Saint ').replace(/\bSte\.? /g, 'Sainte ').replace(/\bGal\.? /g, 'Général ')
+    .replace(/\bMal\.? /g, 'Maréchal ').replace(/\bAv\.? /g, 'Avenue ').replace(/\bBd\.? /g, 'Boulevard ').replace(/\bPdt\.? /g, 'Président ');
+  t = t.trim().replace(/\.+$/, '') + '.';
+  return t.replace(/\.\s*\./g, '.');
+}
+
+// `steps` : numéros des manœuvres dont parle cette annonce. Sert à ne pas la couper pour redire la même chose.
+function speak(text, urgent, steps) {
   if (S.muted) return;
+  text = sayable(text);
+  const now = performance.now();
+  const length = 500 + text.length * 62; // durée approximative de l'annonce
+  if (urgent || now > (S.voiceUntil || 0)) { S.voiceUntil = now + length; S.voiceSteps = steps || []; }
+  else { S.voiceUntil += length; S.voiceSteps = (S.voiceSteps || []).concat(steps || []); }
   if (Native && Native.hasVoice) { Native.speak(text, urgent); return; } // application iPhone : voix du téléphone
   if (!('speechSynthesis' in window)) return;
   try {
@@ -739,7 +795,8 @@ function speak(text, urgent) {
     else if (speechSynthesis.pending && S.sim && S.speed * S.simMult > 30) return;
     const u = new SpeechSynthesisUtterance(text);
     u.lang = 'fr-FR';
-    u.rate = 1.05;
+    if (frVoice) u.voice = frVoice;
+    u.rate = 1;
     speechSynthesis.speak(u);
   } catch { /* pas de synthèse vocale */ }
 }
@@ -768,12 +825,24 @@ function laneAdvice(lanes) {
   return count === 1 ? 'Prenez la voie du milieu' : 'Prenez l\'une des voies du milieu';
 }
 
+// Distance dite à voix haute : arrondie, comme on la dirait (« 200 mètres », pas « 187 mètres »).
+function roundSpoken(m) {
+  if (m >= 1000) return fmtDistSpoken(m);
+  const r = m >= 150 ? Math.round(m / 50) * 50 : Math.max(10, Math.round(m / 10) * 10);
+  return r >= 1000 ? fmtDistSpoken(r) : r + ' mètres';
+}
+
+// Consignes vocales. Trois moments au plus par manœuvre, chacun court :
+//   1. de loin, juste après la manœuvre précédente (« Continuez pendant 12 kilomètres », ou la consigne si elle est proche) ;
+//   2. à l'approche, assez tôt pour se placer (150 m en ville, 400 m sur voie rapide ; 2 km avant une sortie de voie rapide) ;
+//   3. au moment d'agir, en quelques mots.
+// Une annonce en cours qui parle déjà de cette manœuvre n'est jamais coupée pour la répéter.
 function announce(k, next, toMan) {
   const done = S.spoken[k] || 0;
-  let near = Math.max(90, S.speed * 9);
-  let now = Math.max(22, S.speed * 2.2);
   // Un simple changement de nom de rue n'est pas une décision : on ne parle pas, pour que les vraies consignes ressortent.
   if (!isTurn(next) && (next.type === 'new name' || next.type === 'continue')) return;
+  let near = clamp(S.speed * 11, 150, 450);
+  let now = Math.max(25, S.speed * 2.5);
   // Dans un rond-point, annoncer « dans 70 mètres, sortez » ferait prendre une sortie trop tôt.
   const ring = S.route.steps[k - 1];
   if (ring && ring.roundabout && next.type.startsWith('exit')) {
@@ -781,25 +850,55 @@ function announce(k, next, toMan) {
     near = 0;                            // sinon une seule annonce, au pied de la sortie
     now = Math.max(12, S.speed * 1.5);
   }
-  const lane = placeAdvice(next);
+  const arriving = next.type === 'arrive';
+  const isRing = next.type === 'roundabout' || next.type === 'rotary';
+  const lane = laneAdvice(next.lanes); // seulement quand les voies sont réellement connues
+  const full = arriving ? 'vous arrivez à destination' : lowerFirst(next.text);
+  const covered = performance.now() < (S.voiceUntil || 0) && (S.voiceSteps || []).includes(k);
   let flag = 0;
   let text = '';
-  if (toMan <= now) { flag = 4; text = next.text; }
-  else if (near && toMan <= near) {
-    flag = 2;
-    text = 'Dans ' + fmtDistSpoken(toMan) + ', ' + lowerFirst(next.text);
+  let steps = [k];
+  if (toMan <= now) {
+    flag = 4;
+    if (arriving) { S.spoken[k] = 4; return; } // « Vous êtes arrivé » est dit à l'arrivée elle-même
+    text = isRing ? 'Prenez la ' + (ORDINAL[next.exit] || next.exit + 'e') + ' sortie' : (next.act || next.text);
+    if (covered) { S.spoken[k] = 4; return; }  // on est déjà en train de le dire
+  } else if (near && toMan <= near) {
+    flag = 3;
+    if (covered || (S.chained || {})[k] || toMan < 50) { // déjà annoncée avec la précédente
+      S.spoken[k] = Math.max(done, 3);
+      // … mais si une autre manœuvre suit de très près, on la fait connaître maintenant, pour ne pas la découvrir au dernier moment.
+      const follow = S.route.steps[k + 1];
+      if (follow && isTurn(follow) && follow.type !== 'arrive' && !follow.type.startsWith('exit') && follow.start - next.start < 160 && !(S.chained || {})[k + 1]) {
+        S.chained = S.chained || {};
+        S.chained[k + 1] = true;
+        speak('Ensuite, ' + lowerFirst(follow.act || follow.text), false, [k + 1]);
+      }
+      return;
+    }
+    text = 'Dans ' + roundSpoken(toMan) + ', ' + full;
     // Deux manœuvres rapprochées : on prévient de la seconde pour se placer tout de suite.
     const after = S.route.steps[k + 1];
-    if (after && after.type !== 'arrive' && !after.type.startsWith('exit') && after.start - next.start < 160) text += ', puis ' + lowerFirst(after.text);
+    if (after && after.type !== 'arrive' && !after.type.startsWith('exit') && after.start - next.start < 160 && isTurn(after)) {
+      text += ', puis ' + lowerFirst(after.act || after.text);
+      S.chained = S.chained || {};
+      S.chained[k + 1] = true;
+      steps = [k, k + 1];
+    }
     if (lane) text += '. ' + lane;
-  } else if (near && toMan > 400) {
+  } else if (near && S.speed > 20 && toMan <= 2100 && toMan > 1200 && /ramp|fork/.test(next.type)) {
+    flag = 2; // voie rapide : rappel 2 km avant la sortie
+    text = 'Dans ' + roundSpoken(toMan) + ', ' + full + (lane ? '. ' + lane : '');
+  } else if (near && toMan > Math.max(500, near * 1.8)) {
     flag = 1;
-    text = 'Dans ' + fmtDistSpoken(toMan) + ', ' + lowerFirst(next.text) + (lane ? '. ' + lane : '');
+    const here = S.route.steps[k - 1];
+    if (toMan > 3000) text = 'Continuez' + (here && here.name ? ' sur ' + here.name : '') + ' pendant ' + fmtDistSpoken(toMan);
+    else text = 'Dans ' + roundSpoken(toMan) + ', ' + full;
   }
   if (!flag || done >= flag) return;
   S.spoken[k] = flag;
   S.lastSaid = text;
-  if (next.type !== 'arrive' || flag === 2) speak(text, flag === 4);
+  speak(text, flag === 4, steps);
 }
 const lowerFirst = (s) => s.charAt(0).toLowerCase() + s.slice(1);
 
@@ -872,13 +971,15 @@ async function startNav(sim) {
   S.zoom = 17.5;
   S.pitch = 58;
 
-  speak('C\'est parti. ' + S.route.steps[0].text + '.', true);
-  try { S.wake = await navigator.wakeLock?.request('screen'); } catch { /* l'écran pourra se mettre en veille */ }
-  if (Native) Native.keepAwake(true);
+  S.chained = {};
+  speak('C\'est parti.', true);
+  keepScreenOn();
 
   if (!sim) {
     const gpsError = (err) => {
-      setNavNote(err.code === 1 || err.code === 'NOT_AUTHORIZED' ? 'Localisation refusée' : 'Signal GPS perdu…');
+      // Code 3 = pas de nouvelle position dans le délai : normal à l'arrêt. Le vrai contrôle se fait dans frame().
+      if (err.code === 1 || err.code === 'NOT_AUTHORIZED') setNavNote('Localisation refusée');
+      else if (!S.gps) setNavNote('Recherche du signal GPS…');
       diag('GPS erreur ' + err.code + ' ' + err.message);
     };
     // Application iPhone : GPS natif, qui continue écran verrouillé. Sinon, GPS du navigateur.
@@ -913,7 +1014,6 @@ function onFix(p) {
   if (S.gpsLost) { // le signal revient
     S.gpsLost = false;
     setNavNote('');
-    speak('Signal GPS retrouvé.');
   }
   S.gps = {
     along: snap.along, t: performance.now(), off, raw,
@@ -999,10 +1099,14 @@ function frame(t) {
     else S.d = Math.min(R.total, S.d + S.speed * dt * S.simMult);
   } else if (S.gps) {
     // Plus de relevé depuis 7 s (tunnel, parking couvert…) : on le dit, plutôt que de laisser croire que tout va bien.
-    if (!S.gpsLost && t - S.gps.t > 7000) {
+    // À l'arrêt (feu rouge, stationnement), le téléphone n'envoie plus de position : ce n'est PAS une perte de signal.
+    // On ne le signale donc que si on roulait vraiment, et après 12 secondes sans rien.
+    const silent = t - S.gps.t;
+    if (silent > 2500 && S.gps.speed < 6) S.gps.speed = 0; // on ne fait pas avancer la voiture toute seule
+    if (!S.gpsLost && silent > 12000 && S.gps.speed > 6) {
       S.gpsLost = true;
       setNavNote('Signal GPS perdu');
-      speak('Signal GPS perdu. Suivez la dernière consigne.');
+      if (performance.now() - (S.gpsLostSaid || -1e9) > 120000) { S.gpsLostSaid = performance.now(); speak('Signal GPS perdu. Suivez la dernière consigne.'); }
     }
     off = S.gps.off;
     S.speed = S.gps.speed;
@@ -1116,7 +1220,7 @@ function updateUi(i, next, toMan) {
       setHtml('man-text', left ? 'Laissez passer ' + left + (left > 1 ? ' sorties' : ' sortie') + ', puis sortez' : 'Prenez la prochaine sortie');
       if (left === 0 && S.rbSaid !== i) {
         S.rbSaid = i;
-        if (here.roundabout.alongs.length) speak('Prenez la prochaine sortie' + (next.road ? ', ' + next.road : '') + '.', true);
+        if (here.roundabout.alongs.length) speak('Sortez maintenant.', true, [i + 1]);
       }
     }
 
@@ -1124,7 +1228,7 @@ function updateUi(i, next, toMan) {
     if (i !== S.lastStep) {
       const st = R.steps[i];
       if (S.lastStep !== undefined && i > 0 && toMan > 500 && st.type !== 'depart' && !S.spoken[i + 1]) {
-        speak('Continuez' + (st.name ? ' sur ' + st.name : '') + ' pendant ' + fmtDistSpoken(toMan) + '.');
+        /* dit par announce() */
       }
       S.lastStep = i;
     }
@@ -1241,7 +1345,7 @@ function stopNav() {
   cancelAnimationFrame(S.raf);
   if (S.watchId !== null) navigator.geolocation.clearWatch(S.watchId);
   S.watchId = null;
-  if (Native) { Native.unwatch(); Native.keepAwake(false); }
+  if (Native) Native.unwatch();
   S.wake?.release?.().catch(() => {});
   S.wake = null;
   stopVoice();
@@ -1308,15 +1412,27 @@ $('sim-mult').addEventListener('click', () => {
   S.simMult = SIM_MULTS[(SIM_MULTS.indexOf(S.simMult) + 1) % SIM_MULTS.length] || 1;
   simShow();
 });
+// L'écran reste allumé tant que l'application est affichée, guidage en cours ou non.
+// Le système retire ce verrou dès qu'on quitte l'application : on le redemande au retour et à chaque appui.
+async function keepScreenOn() {
+  if (Native) Native.keepAwake(true);
+  if (!('wakeLock' in navigator) || document.visibilityState !== 'visible' || (S.wake && !S.wake.released)) return;
+  try {
+    S.wake = await navigator.wakeLock.request('screen');
+    S.wake.addEventListener('release', () => setTimeout(keepScreenOn, 800));
+  } catch { /* refusé (batterie faible, par exemple) : on réessaiera au prochain appui */ }
+}
+document.addEventListener('pointerdown', keepScreenOn);
+keepScreenOn();
+
 // Quand on revient sur l'application, le verrou d'écran doit être redemandé.
 document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible') keepScreenOn();
   if (document.visibilityState === 'visible' && S.mode === 'nav') {
-    try { S.wake = await navigator.wakeLock?.request('screen'); } catch { /* rien */ }
     // Pendant que l'écran était éteint ou l'application en arrière-plan, le guidage était en pause.
     // On le signale et on redonne tout de suite la consigne en cours.
     if (S.hiddenAt && performance.now() - S.hiddenAt > 4000) {
-      speak('Guidage repris.', true);
-      repeatInstruction();
+      if (!voiceBusy()) repeatInstruction();
     }
   } else if (document.visibilityState === 'hidden') {
     S.hiddenAt = performance.now();
@@ -1330,8 +1446,8 @@ function repeatInstruction() {
   const next = S.route.steps[i + 1];
   if (!next) return;
   const toMan = next.start - S.d;
-  const place = placeAdvice(next);
-  speak((toMan > 40 ? 'Dans ' + fmtDistSpoken(toMan) + ', ' + lowerFirst(next.text) : next.text) + (place ? '. ' + place : '') + '.');
+  const lane = laneAdvice(next.lanes);
+  speak((toMan > 40 ? 'Dans ' + roundSpoken(toMan) + ', ' + lowerFirst(next.text) : next.text) + (lane ? '. ' + lane : ''), true, [i + 1]);
 }
 $('banner').addEventListener('click', repeatInstruction);
 
@@ -1542,10 +1658,12 @@ function diagReport() {
       (S.lastAccuracy ? ', précision ' + Math.round(S.lastAccuracy) + ' m' : ''),
     'Application native iPhone : ' + (Native ? 'oui (GPS natif ' + (Native.hasGps ? 'oui' : 'NON') + ', voix native ' + (Native.hasVoice ? 'oui' : 'NON') + ')' : 'non'),
     'Voix : ' + ('speechSynthesis' in window ? speechSynthesis.getVoices().filter((v) => v.lang.startsWith('fr')).length + ' voix françaises' : 'ABSENTE'),
-    'Écran maintenu allumé : ' + ('wakeLock' in navigator ? (S.wake ? 'actif' : 'disponible') : 'NON GÉRÉ'),
+    'Écran maintenu allumé : ' + ('wakeLock' in navigator ? (S.wake && !S.wake.released ? 'actif' : 'disponible, pas actif') : 'NON GÉRÉ') + (Native ? ' (+ module natif)' : ''),
+    'Commandes vocales : ' + (typeof Voice !== 'undefined' && Voice.available ? (Voice.native ? 'oui (natif)' : 'oui (navigateur)') : 'NON DISPONIBLES ici'),
+    'Voix choisie : ' + (frVoice ? frVoice.name : 'celle du système'),
     'Réseau : ' + (navigator.onLine ? 'connecté' : 'HORS LIGNE'),
     'Clé Google : ' + (S.gkey ? 'enregistrée' : 'aucune'),
-    'Trafic TomTom : ' + (ttKey() ? 'clé présente, ' + ttUsage(0) + ' demandes ce mois (limite ' + TT.monthlyCap + ')' : 'pas de clé'),
+    'Trafic TomTom : ' + (ttKey() ? 'clé présente, ce mois : ' + ttUsage(0) + ' demandes de trafic et ' + ttUsage(0, 'r') + ' calculs d\'itinéraire (limite ' + TT.monthlyCap + ' chacun)' : 'pas de clé'),
     'Mode : ' + S.mode + (S.route ? ', trajet de ' + fmtDist(S.route.total) + ', ' + S.hazards.length + ' alertes' : ', pas de trajet'),
     '--- journal ---',
   ];

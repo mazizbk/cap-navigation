@@ -38,7 +38,7 @@ const Native = (() => {
       if (!P.BackgroundGeolocation) return false;
       try {
         watcherId = await P.BackgroundGeolocation.addWatcher({
-          backgroundTitle: 'Cap', backgroundMessage: 'Guidage en cours', requestPermissions: true, stale: false, distanceFilter: 3,
+          backgroundTitle: 'Cap', backgroundMessage: 'Guidage en cours', requestPermissions: true, stale: false, distanceFilter: 0,
         }, (loc, err) => {
           if (err) { onError(err); return; }
           if (!loc) return;

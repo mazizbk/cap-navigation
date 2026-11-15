@@ -19,6 +19,16 @@
   <div id="map"></div>
 
   <button id="view-toggle" class="btn">Plan</button>
+  <button id="fuel-btn" class="btn">⛽ SP95</button>
+  <button id="mic-btn" class="btn" aria-label="Commande vocale">🎤</button>
+  <div id="voice-hud" class="panel" hidden></div>
+
+  <!-- Stations-service : la moins chère et la plus proche -->
+  <section id="fuel" class="panel" hidden>
+    <header><b>Carburant SP95</b><button id="fuel-close" class="icon-btn" aria-label="Fermer">✕</button></header>
+    <p id="fuel-info"></p>
+    <ul id="fuel-list"></ul>
+  </section>
 
   <!-- Préparation du trajet -->
   <section id="planner" class="panel">
@@ -36,14 +46,26 @@
       </div>
       <button type="submit" id="go" class="btn btn-primary">Itinéraire</button>
     </form>
+    <div id="shortcuts" hidden></div>
+    <div id="route-opts">
+      <label class="option"><input type="checkbox" id="avoid-tolls"> Éviter les péages</label>
+      <label class="option"><input type="checkbox" id="avoid-motorways"> Éviter les autoroutes</label>
+    </div>
     <ul id="results" hidden></ul>
     <div id="summary" hidden>
       <div id="summary-text"></div>
+      <div id="route-choices" hidden></div>
       <div id="summary-traffic"></div>
       <div id="summary-hazards"></div>
       <div class="row" id="recon-row">
         <button type="button" id="recon-btn" class="btn">Repérer les carrefours</button>
         <a id="summary-sv" class="btn" target="_blank" rel="noopener">Voir l'arrivée</a>
+      </div>
+      <div id="save-place" hidden>
+        <span>Enregistrer cette destination :</span>
+        <button type="button" id="save-home" class="chip">🏠 Domicile</button>
+        <button type="button" id="save-work" class="chip">💼 Travail</button>
+        <span id="save-note"></span>
       </div>
       <label id="car-option"><input type="checkbox" id="car-screen"> Afficher les consignes sur l'écran de la voiture (Bluetooth, expérimental)</label>
       <button type="button" id="resume-nav" class="btn btn-primary" hidden>Reprendre le guidage</button>
@@ -149,6 +171,7 @@
         <div id="remaining"></div>
       </div>
       <div id="speed"><b>0</b><span>km/h</span></div>
+      <button id="mic-nav" class="icon-btn" aria-label="Commande vocale" title="Commande vocale">🎤</button>
       <button id="mute" class="icon-btn" aria-label="Couper la voix" title="Voix">🔊</button>
       <button id="stop" class="btn btn-danger">Arrêter</button>
     </div>
@@ -163,5 +186,7 @@
   <script src="hazards.js"></script>
   <script src="street.js"></script>
   <script src="traffic.js"></script>
+  <script src="extras.js"></script>
+  <script src="voice.js"></script>
 </body>
 </html>

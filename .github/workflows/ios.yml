@@ -38,6 +38,8 @@ jobs:
           P=/usr/libexec/PlistBuddy
           $P -c "Add :NSLocationWhenInUseUsageDescription string 'Cap utilise votre position pour vous guider.'" $PLIST
           $P -c "Add :NSLocationAlwaysAndWhenInUseUsageDescription string 'Cap utilise votre position pour continuer le guidage quand l écran est verrouillé.'" $PLIST
+          $P -c "Add :NSMicrophoneUsageDescription string 'Cap écoute vos commandes vocales quand vous touchez le micro.'" $PLIST
+          $P -c "Add :NSSpeechRecognitionUsageDescription string 'Cap reconnaît vos commandes vocales (destination, station-service, répéter…).'" $PLIST
           $P -c "Add :UIBackgroundModes array" $PLIST
           $P -c "Add :UIBackgroundModes:0 string location" $PLIST
           $P -c "Add :UIBackgroundModes:1 string audio" $PLIST

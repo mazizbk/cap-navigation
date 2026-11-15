@@ -495,3 +495,59 @@ body.navigating .maplibregl-ctrl-bottom-right { bottom: calc(var(--safe-bottom) 
 #summary-traffic:empty { display: none; }
 
 #resume-nav { width: 100%; margin-bottom: 8px; font-size: 18px; min-height: 56px; }
+
+/* ---------- raccourcis, options et variantes d'itinéraire ---------- */
+#shortcuts { display: flex; gap: 6px; overflow-x: auto; margin-top: 8px; padding-bottom: 2px; scrollbar-width: none; }
+#shortcuts::-webkit-scrollbar { display: none; }
+.chip { flex: none; appearance: none; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.08); color: var(--text);
+  font: inherit; font-size: 14px; padding: 8px 12px; border-radius: 999px; cursor: pointer; white-space: nowrap; }
+.chip:active { transform: scale(0.97); }
+#route-opts { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; }
+#route-opts .option { margin: 0; }
+#route-choices { display: flex; gap: 6px; margin: 8px 0 10px; }
+.choice { flex: 1; min-width: 0; appearance: none; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.06); color: var(--text);
+  font: inherit; padding: 8px 6px; border-radius: 12px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.choice b { font-size: 16px; }
+.choice span { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.choice.on { border-color: var(--accent); background: rgba(25, 211, 181, 0.16); }
+#results button span { color: var(--muted); font-size: 13px; }
+#save-place { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; color: var(--muted); margin-bottom: 10px; }
+#save-place .chip { padding: 6px 10px; font-size: 13px; }
+#save-note { color: var(--accent); }
+
+/* ---------- carburant ---------- */
+#fuel-btn { position: fixed; left: 86px; bottom: calc(var(--safe-bottom) + 34px); z-index: 4; min-height: 40px; padding: 8px 14px;
+  background: var(--bg); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+body.navigating #fuel-btn { left: 10px; bottom: calc(var(--safe-bottom) + 100px); z-index: 6; }
+body.navigating.has-alert #fuel-btn { bottom: calc(var(--safe-bottom) + 176px); }
+#fuel { position: fixed; inset: calc(var(--safe-top) + 12px) 12px calc(var(--safe-bottom) + 12px) 12px; max-width: 520px; z-index: 20;
+  padding: 14px; overflow: auto; background: rgba(14, 20, 32, 0.97); }
+#fuel header { display: flex; align-items: center; justify-content: space-between; font-size: 20px; }
+#fuel p { color: var(--muted); font-size: 13px; margin: 4px 0 10px; }
+#fuel-list { list-style: none; margin: 0; padding: 0; }
+#fuel-list li { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+#fuel-list li.fuel-top { background: rgba(25, 211, 181, 0.1); border: 1px solid rgba(25, 211, 181, 0.45); border-radius: 14px; padding: 10px; margin-bottom: 8px; }
+.fuel-price { flex: none; width: 82px; display: flex; flex-direction: column; align-items: flex-start; }
+.fuel-price b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.fuel-price small { color: var(--muted); font-size: 12px; }
+.fuel-text { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 14px; }
+.fuel-text em { font-style: normal; font-weight: 700; color: var(--accent); font-size: 13px; }
+.fuel-text span { color: var(--muted); font-size: 13px; }
+#fuel-list .btn { flex: none; font-size: 14px; padding: 8px 12px; min-height: 40px; }
+
+/* ---------- commandes vocales ---------- */
+#mic-btn { position: fixed; right: 12px; bottom: calc(var(--safe-bottom) + 34px); z-index: 4; min-height: 40px; min-width: 48px; padding: 8px 12px;
+  background: var(--bg); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); font-size: 18px; }
+body.navigating #mic-btn { display: none; }
+body.listening #mic-btn, body.listening #mic-nav { background: var(--accent); color: #04121a; animation: mic-pulse 1s ease-in-out infinite; }
+@keyframes mic-pulse { 50% { transform: scale(1.12); } }
+#voice-hud { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--safe-bottom) + 190px); z-index: 30; max-width: calc(100vw - 32px);
+  padding: 12px 18px; font-size: 17px; font-weight: 600; text-align: center; background: rgba(14, 20, 32, 0.96); border: 1px solid var(--accent); }
+
+/* ---------- iPhone 13 (390 px de large) : la barre du bas tient sur une ligne sans rien couper ---------- */
+#bottom { gap: 8px; }
+#bottom .icon-btn { flex: none; width: 40px; padding: 0; }
+#bottom #stop { flex: none; padding: 10px 12px; }
+#trip { min-width: 0; flex: 1; }
+#remaining { white-space: nowrap; font-size: 13px; }
+@media (max-width: 400px) { #speed b { font-size: 20px; } #eta { font-size: 22px; } }

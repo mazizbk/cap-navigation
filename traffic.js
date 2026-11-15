@@ -31,12 +31,13 @@ const TT_KIND = {
 function ttKey() { return (window.CAP_CONFIG && window.CAP_CONFIG.tomtomKey) || ''; }
 
 // Compteur des demandes du mois, gardé sur l'appareil.
-function ttUsage(add) {
+// `kind` : 'n' pour les incidents de trafic, 'r' pour les calculs d'itinéraire.
+function ttUsage(add, kind = 'n') {
   const month = new Date().toISOString().slice(0, 7);
-  let u = { month, n: 0 };
-  try { const saved = JSON.parse(localStorage.getItem('ttUsage') || 'null'); if (saved && saved.month === month) u = saved; } catch { /* stockage indisponible */ }
-  if (add) { u.n += add; try { localStorage.setItem('ttUsage', JSON.stringify(u)); } catch { /* idem */ } }
-  return u.n;
+  let u = { month, n: 0, r: 0 };
+  try { const saved = JSON.parse(localStorage.getItem('ttUsage') || 'null'); if (saved && saved.month === month) u = { r: 0, ...saved }; } catch { /* stockage indisponible */ }
+  if (add) { u[kind] += add; try { localStorage.setItem('ttUsage', JSON.stringify(u)); } catch { /* idem */ } }
+  return u[kind];
 }
 
 function bboxOf(coords) {
@@ -127,6 +128,110 @@ function placeTomTom(R, incidents, d0, d1) {
   }
   jams.sort((x, y) => x.from - y.from);
   return { jams, points };
+}
+
+
+// ================================================================= itinéraires TomTom
+// Avec la clé, TomTom calcule les trajets en tenant compte du trafic réel, propose des variantes et sait
+// éviter péages ou autoroutes. On garde notre moteur de guidage (schémas de carrefours, ronds-points, voies)
+// en lui faisant suivre exactement le tracé choisi par TomTom, grâce à des points de passage posés dessus.
+async function tomtomRoutes(from, to, maxAlt) {
+  if (ttUsage(0, 'r') >= TT.monthlyCap) throw new Error('quota TomTom du mois atteint');
+  const params = new URLSearchParams({
+    key: ttKey(), traffic: 'true', travelMode: 'car', routeType: 'fastest', maxAlternatives: String(maxAlt), sectionType: 'tollRoad',
+  });
+  if (S.avoidTolls) params.append('avoid', 'tollRoads');
+  if (S.avoidMotorways) params.append('avoid', 'motorways');
+  ttUsage(1, 'r');
+  const res = await fetch('https://api.tomtom.com/routing/1/calculateRoute/' + from.lat + ',' + from.lon + ':' + to.lat + ',' + to.lon + '/json?' + params,
+    { signal: AbortSignal.timeout(20000) });
+  if (!res.ok) throw new Error('itinéraire TomTom ' + res.status);
+  return ((await res.json()).routes || []).map((r) => ({
+    pts: r.legs.flatMap((leg) => leg.points.map((p) => [p.longitude, p.latitude])),
+    length: r.summary.lengthInMeters, time: r.summary.travelTimeInSeconds, delay: r.summary.trafficDelayInSeconds || 0,
+    toll: (r.sections || []).some((s) => s.sectionType === 'TOLL_ROAD'),
+  }));
+}
+
+// Fait suivre à notre moteur de guidage le tracé `tt` de TomTom. Renvoie null si le résultat s'en écarte.
+async function osrmAlong(tt, from, to) {
+  const cum = Geo.cumulative(tt.pts);
+  for (const count of [22, 10]) {
+    const gap = cum[cum.length - 1] / (count + 1);
+    const vias = [];
+    let target = gap;
+    for (let i = 1; i < tt.pts.length - 1 && vias.length < count; i++) {
+      if (cum[i] < target) continue;
+      // Le cap imposé à chaque point évite de se rabattre sur la chaussée d'en face.
+      vias.push({ p: tt.pts[i], b: Math.round(Geo.bearing(tt.pts[i - 1], tt.pts[i + 1])) });
+      target += gap;
+    }
+    const coords = [from.lon + ',' + from.lat].concat(vias.map((v) => v.p[0].toFixed(6) + ',' + v.p[1].toFixed(6)), to.lon + ',' + to.lat).join(';');
+    const bearings = [''].concat(vias.map((v) => v.b + ',40'), '').join(';');
+    const radiuses = ['unlimited'].concat(vias.map(() => '60'), 'unlimited').join(';');
+    const url = CONFIG.osrm + coords + '?steps=true&overview=false&geometries=geojson&continue_straight=true' +
+      '&waypoints=0;' + (vias.length + 1) + '&bearings=' + bearings + '&radiuses=' + radiuses;
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(25000) });
+      const json = await res.json();
+      if (!res.ok || json.code !== 'Ok') continue;
+      const R = buildRoute(json.routes[0]);
+      if (Math.abs(R.total - tt.length) / tt.length > 0.03) continue; // détour : on réessaie avec moins de points
+      // Durées recalées sur le temps de TomTom, qui tient compte du trafic.
+      const k = tt.time / R.duration;
+      let clock = 0;
+      for (const s of R.steps) { s.duration *= k; s.tStart = clock; clock += s.duration; }
+      R.duration = tt.time;
+      R.viaTomTom = true;
+      R.toll = tt.toll;
+      R.ttDelay = tt.delay;
+      return R;
+    } catch { /* on réessaie avec moins de points, puis on renonce */ }
+  }
+  return null;
+}
+
+// Itinéraires TomTom (le plus rapide d'abord), ou null si la clé manque ou si le service ne répond pas.
+async function tomtomChoices(from, to, near) {
+  if (!ttKey()) return null;
+  try {
+    const out = [];
+    for (const tt of await tomtomRoutes(from, to, near ? 0 : 2)) {
+      const R = await osrmAlong(tt, from, to);
+      if (R) out.push(R);
+    }
+    return out.length ? out : null;
+  } catch (e) {
+    diag('itinéraire TomTom indisponible : ' + e.message);
+    return null;
+  }
+}
+
+// Boutons de choix entre les trajets proposés.
+function renderRouteChoices() {
+  const box = $('route-choices');
+  box.innerHTML = '';
+  const alts = S.alts || [];
+  box.hidden = alts.length < 2;
+  alts.forEach((R, k) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'choice' + (R === S.route ? ' on' : '');
+    const time = R.viaTomTom ? R.duration : R.duration + (R.jamDelay || 0);
+    b.innerHTML = '<b>' + fmtDuration(time) + '</b><span>' + fmtDist(R.total) + (R.viaTomTom ? (R.toll ? ' · péage' : ' · sans péage') : '') + '</span>';
+    b.addEventListener('click', () => chooseRoute(k));
+    box.appendChild(b);
+  });
+}
+
+async function chooseRoute(k) {
+  const R = (S.alts || [])[k];
+  if (!R || R === S.route) return;
+  S.route = R;
+  if (!R.trafficLoaded) { setStatus('Lecture du trafic sur ce trajet…'); await applyTraffic(R); setStatus(''); }
+  showSummary();
+  loadHazards();
+  saveTrip(false);
 }
 
 // ================================================================= Nantes Métropole
@@ -233,12 +338,28 @@ async function applyTraffic(R, d0, d1) {
   }
   R.jamDelay = R.jams.reduce((t, j) => t + j.delay, 0);
   R.closed = R.jams.filter((j) => j.closed).length;
-  R.cost = R.duration + R.jamDelay + R.jams.reduce((t, j) => t + (j.penalty || 0), 0);
+  // Avec un itinéraire TomTom, le temps de trajet contient déjà le trafic : on n'ajoute pas les retards une 2e fois.
+  R.cost = R.duration + (R.viaTomTom ? 0 : R.jamDelay) + R.jams.reduce((t, j) => t + (j.penalty || 0), 0);
+  R.trafficLoaded = true;
 }
 
 // Calcule les itinéraires possibles et retient le plus rapide compte tenu du trafic connu.
 // `near` : pendant le guidage, on ne regarde que les 100 prochains km (économie de demandes).
 async function bestRoute(from, to, near) {
+  const choices = await tomtomChoices(from, to, near);
+  if (choices) {
+    const best = choices[0]; // TomTom classe déjà du plus rapide au plus lent, trafic compris
+    await applyTraffic(best, 0, near ? Math.min(best.total, TT.horizon) : best.total);
+    best.alts = choices;
+    best.choices = choices.length;
+    best.saved = 0;
+    return best;
+  }
+  return bestRouteOpen(from, to, near);
+}
+
+// Sans clé TomTom (ou si le service ne répond pas) : itinéraires du service libre, départagés avec les bouchons connus.
+async function bestRouteOpen(from, to, near) {
   const routes = await fetchRoutes(from, to);
   const span = (R) => (near ? Math.min(R.total, TT.horizon) : R.total);
   await applyTraffic(routes[0], 0, span(routes[0]));
@@ -251,11 +372,17 @@ async function bestRoute(from, to, near) {
   const best = routes.reduce((a, b) => (b.cost < a.cost - 60 ? b : a), routes[0]);
   best.saved = best !== routes[0] ? routes[0].cost - best.cost : 0;
   best.choices = routes.length;
+  best.alts = routes;
   return best;
 }
 
-// Retard dû aux ralentissements encore devant nous.
+// Retard à AJOUTER à l'heure d'arrivée : rien si le temps de trajet (TomTom) contient déjà le trafic.
 function jamDelayAhead() {
+  return S.route && S.route.viaTomTom ? 0 : rawJamDelayAhead();
+}
+
+// Retard dû aux ralentissements encore devant nous.
+function rawJamDelayAhead() {
   const R = S.route;
   if (!R || !R.jams) return 0;
   let total = 0;
@@ -285,6 +412,12 @@ function drawJams() {
 function trafficSummary() {
   const R = S.route;
   if (!R) return '';
+  if (R.viaTomTom) {
+    const min = Math.round((R.ttDelay || 0) / 60);
+    return (R.closed ? '⛔ Route signalée fermée sur le trajet · ' : '') +
+      (min >= 1 ? '🚗 +' + min + ' min de trafic en ce moment' : 'Trafic fluide en ce moment') +
+      (R.toll ? ' · avec péage' : ' · sans péage') + ' · source TomTom';
+  }
   if (!R.trafficKnown) {
     if (ttKey()) return 'Trafic TomTom indisponible' + (R.trafficNote ? ' (' + R.trafficNote + ')' : '');
     return inNantes(R) ? 'Bouchons de Nantes : données indisponibles pour le moment' : '';
@@ -311,16 +444,19 @@ async function refreshTraffic() {
     drawJams();
   }
   loadHazards(); // remet à jour la liste des alertes (dont les ralentissements)
-  if (S.mode !== 'nav' || S.rerouting || !S.pos || jamDelayAhead() < 180) return;
+  if (S.mode !== 'nav' || S.rerouting || !S.pos || rawJamDelayAhead() < 180) return;
   try {
     const alt = await bestRoute({ lon: S.pos[0], lat: S.pos[1] }, S.to, true);
     if (S.route !== R || S.mode !== 'nav' || S.rerouting) return;
     const i = stepIndexAt(S.d);
     const st = R.steps[i];
     const frac = st.distance > 0 ? clamp((S.d - st.start) / st.distance, 0, 1) : 1;
-    const current = R.duration - (st.tStart + st.duration * frac) + jamDelayAhead();
+    const current = R.duration - (st.tStart + st.duration * frac) + rawJamDelayAhead();
     const gain = current - alt.cost;
     if (gain < 180) return;
+    // Le nouveau trajet doit vraiment passer ailleurs (sinon c'est le même, simplement réévalué).
+    const mid = Geo.pointAt(alt.coords, alt.cum, Math.min(alt.total, 5000) / 2 + 500);
+    if (Geo.snap(R.coords, R.cum, mid).dist < 150) return;
     diag('trajet plus rapide : ' + Math.round(gain / 60) + ' min gagnées');
     useRoute(alt);
     speak('Bouchon devant. Je passe par un trajet plus rapide, ' + Math.round(gain / 60) + ' minutes de moins.', true);
