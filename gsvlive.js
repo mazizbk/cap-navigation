@@ -105,20 +105,45 @@ const GLive = (() => {
     if (pts.length < 2) return;
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
-    // Ruban : plus large près de la voiture, plus fin au loin (effet de perspective).
-    for (const [color, extra] of [['rgba(14,20,32,0.85)', 6], ['#ffd23f', 0]]) {
-      ctx.strokeStyle = color;
-      for (let k = 1; k < pts.length; k++) {
-        ctx.lineWidth = Math.max(3, 36 / Math.max(1, pts[k][2] / 6)) + extra;
-        ctx.beginPath(); ctx.moveTo(pts[k - 1][0], pts[k - 1][1]); ctx.lineTo(pts[k][0], pts[k][1]); ctx.stroke();
-      }
+    // Ruban continu (polygone), plus large près de la voiture et plus fin au loin, comme une vraie bande peinte sur la route.
+    const half = (d) => Math.max(2, Math.min(14, 55 / Math.max(1, d)));
+    const left = [];
+    const right = [];
+    for (let k = 0; k < pts.length; k++) {
+      const p0 = pts[Math.max(0, k - 1)];
+      const p1 = pts[Math.min(pts.length - 1, k + 1)];
+      let nx = -(p1[1] - p0[1]);
+      let ny = p1[0] - p0[0];
+      const n = Math.hypot(nx, ny) || 1;
+      nx /= n; ny /= n;
+      const w = half(pts[k][2]);
+      left.push([pts[k][0] + nx * w, pts[k][1] + ny * w]);
+      right.push([pts[k][0] - nx * w, pts[k][1] - ny * w]);
     }
+    ctx.beginPath();
+    left.forEach((p, k) => (k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
+    for (let k = right.length - 1; k >= 0; k--) ctx.lineTo(right[k][0], right[k][1]);
+    ctx.closePath();
+    // Dégradé : franc près de la voiture, plus léger au loin. Ombre douce pour détacher le ruban de la photo.
+    const top = Math.min(...pts.map((p) => p[1]));
+    const g = ctx.createLinearGradient(0, H, 0, top);
+    g.addColorStop(0, 'rgba(255, 214, 64, 0.92)');
+    g.addColorStop(1, 'rgba(255, 214, 64, 0.6)');
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
+    ctx.shadowBlur = 6;
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
     // Pointe de flèche au bout.
     const a = pts[pts.length - 2];
     const b = pts[pts.length - 1];
     const ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
-    const s = Math.max(10, 40 / Math.max(1, b[2] / 6));
-    ctx.fillStyle = '#ffd23f'; ctx.strokeStyle = 'rgba(14,20,32,0.85)'; ctx.lineWidth = 3;
+    const s = Math.max(9, Math.min(26, 160 / Math.max(1, b[2])));
+    ctx.fillStyle = 'rgba(255, 214, 64, 0.95)'; ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(b[0] + Math.cos(ang) * s, b[1] + Math.sin(ang) * s);
     ctx.lineTo(b[0] + Math.cos(ang + 2.4) * s, b[1] + Math.sin(ang + 2.4) * s);
@@ -139,7 +164,7 @@ const GLive = (() => {
     const reach = fast ? 800 : 300;
     const dist = target ? target.start - S.d : 1e9;
     const show = target && isDecision(target) && target.type !== 'arrive' && dist < reach;
-    if (!show) { if (step !== -1) { step = -1; $('gsv').hidden = true; $('gsv').classList.remove('live'); } return true; }
+    if (!show) { if (step !== -1) { step = -1; $('gsv').hidden = true; $('gsv').classList.remove('live'); document.body.classList.remove('has-live'); } return true; }
     if (step !== k) {
       step = k;
       lastD = -1e9;
@@ -151,6 +176,7 @@ const GLive = (() => {
     ensure().then(() => {
       $('gsv').classList.add('live');
       $('gsv').hidden = false;
+      document.body.classList.add('has-live');
       // La photo avance tous les 20 m environ (au plus une fois par seconde).
       const now = performance.now();
       if (S.d - lastD > 20 && now - lastAt > 1000) { lastD = S.d; lastAt = now; follow(target); }
