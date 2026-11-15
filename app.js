@@ -602,6 +602,7 @@ function showSummary() {
     '<br><span>vers ' + escapeHtml(S.to ? S.to.label : '') + '</span>';
   $('summary-traffic').textContent = trafficSummary();
   renderRouteChoices();
+  if (typeof Plus !== 'undefined') Plus.rainAtArrival(R);
 }
 
 // Options d'itinéraire (prises en compte par TomTom).
@@ -1064,6 +1065,7 @@ async function startNav(sim) {
   S.chained = {};
   if (typeof Copilot !== 'undefined') Copilot.reset();
   speak('C\'est parti. ' + (typeof Copilot !== 'undefined' ? Copilot.briefing() : ''), true);
+  if (typeof Plus !== 'undefined') Plus.onStart();
   keepScreenOn();
 
   if (!sim) {
@@ -1381,6 +1383,7 @@ function updateUi(i, next, toMan) {
   setHtml('road-now', escapeHtml(roadNow));
   $('road-now').hidden = !roadNow || document.body.classList.contains('has-alert');
   if (typeof Copilot !== 'undefined') Copilot.tick();
+  if (typeof Plus !== 'undefined') Plus.tick();
 
   // Alertes et bouchons changent pendant qu'on roule : on les relit toutes les 3 minutes,
   // et on bascule sur un trajet plus rapide s'il en existe un (voir traffic.js).
@@ -1444,6 +1447,7 @@ function arrive() {
   S.mode = 'arrived';
   S.speed = 0;
   cancelAnimationFrame(S.raf);
+  if (typeof Plus !== 'undefined' && !S.sim) Plus.rememberCar();
   setHtml('man-icon', stepIcon({ type: 'arrive' }, 80));
   $('sign').hidden = true;
   $('banner').classList.remove('exit', 'exit-a');

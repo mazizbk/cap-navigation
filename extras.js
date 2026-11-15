@@ -56,6 +56,7 @@ function renderShortcuts() {
     chip('🕘', short.length > 22 ? short.slice(0, 21) + '…' : short, r);
   }
   box.hidden = !box.children.length;
+  if (typeof Plus !== 'undefined') Plus.renderCarChip();
 }
 
 // Appelé par planRoute quand un itinéraire vient d'être calculé.

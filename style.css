@@ -812,3 +812,8 @@ body.has-live #road-now { display: none; }
 #trip-cost .linklike { font-size: 12px; margin-left: 4px; }
 #summary-hazards { font-size: 13px; }
 body.has-route #summary-text span { font-size: 13px; }
+
+/* ---------- pluie à l'arrivée, voiture garée, heure d'arrivée à partager ---------- */
+#summary-rain { font-size: 13px; color: #8cc8ff; margin: -6px 0 10px; }
+.chip-car { border-color: rgba(25, 211, 181, 0.6); }
+#eta { cursor: pointer; }
