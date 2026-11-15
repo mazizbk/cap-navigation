@@ -75,6 +75,17 @@
       </div>
     </div>
     <p id="status" role="status"></p>
+    <details id="ai-settings">
+      <summary>Commandes vocales avec Claude</summary>
+      <p>Avec une clé API Anthropic, vous parlez librement (« je n'ai presque plus d'essence », « ramène-moi »). La clé reste sur cet appareil.</p>
+      <div class="row">
+        <input id="akey" type="password" placeholder="Collez la clé Anthropic ici" autocomplete="off" aria-label="Clé API Anthropic">
+        <button type="button" id="akey-save" class="btn">Enregistrer</button>
+      </div>
+      <p id="akey-note"></p>
+      <label class="option"><input type="checkbox" id="auto-listen"> Écouter dès que l'application s'ouvre (« Dis Siri, ouvre Cap », puis parlez)</label>
+      <button type="button" id="akey-clear" class="chip">Retirer la clé</button>
+    </details>
     <details id="settings">
       <summary>Photos Google dans l'application</summary>
       <p>Avec une clé Google Maps (service « Maps Embed API »), Street View s'affiche ici même, dans le repérage et à l'approche des carrefours. Sans clé, les boutons « Street View » ouvrent Google dans un nouvel onglet.</p>
@@ -130,10 +141,8 @@
       <!-- Google Street View du prochain carrefour (avec une clé Google). Non cliquable : on ne manipule rien en roulant. -->
       <div id="gsv" class="panel" hidden>
         <iframe id="gsv-frame" title="Aperçu Google Street View du prochain carrefour" referrerpolicy="no-referrer-when-downgrade"></iframe>
-        <div id="gsv-label">
-          <span id="gsv-icon"></span>
-          <span id="gsv-lines"><small><span id="gsv-what"></span> · <b id="gsv-dist"></b></small><span id="gsv-text"></span></span>
-        </div>
+        <div id="gsv-arrow"></div>
+        <div id="gsv-label"><span id="gsv-what"></span> · <b id="gsv-dist"></b> · <span id="gsv-text"></span></div>
       </div>
       </div>
       <!-- Vraie photo de la route, dans le sens de la marche. Toucher pour agrandir. -->
@@ -187,6 +196,7 @@
   <script src="street.js"></script>
   <script src="traffic.js"></script>
   <script src="extras.js"></script>
+  <script src="ai.js"></script>
   <script src="voice.js"></script>
 </body>
 </html>

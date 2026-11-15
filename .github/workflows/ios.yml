@@ -40,6 +40,11 @@ jobs:
           $P -c "Add :NSLocationAlwaysAndWhenInUseUsageDescription string 'Cap utilise votre position pour continuer le guidage quand l écran est verrouillé.'" $PLIST
           $P -c "Add :NSMicrophoneUsageDescription string 'Cap écoute vos commandes vocales quand vous touchez le micro.'" $PLIST
           $P -c "Add :NSSpeechRecognitionUsageDescription string 'Cap reconnaît vos commandes vocales (destination, station-service, répéter…).'" $PLIST
+          $P -c "Add :CFBundleURLTypes array" $PLIST
+          $P -c "Add :CFBundleURLTypes:0 dict" $PLIST
+          $P -c "Add :CFBundleURLTypes:0:CFBundleURLName string fr.capnavigation.app" $PLIST
+          $P -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" $PLIST
+          $P -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string capnav" $PLIST
           $P -c "Add :UIBackgroundModes array" $PLIST
           $P -c "Add :UIBackgroundModes:0 string location" $PLIST
           $P -c "Add :UIBackgroundModes:1 string audio" $PLIST

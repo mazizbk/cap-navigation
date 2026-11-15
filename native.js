@@ -13,6 +13,24 @@ const Native = (() => {
   const P = cap.Plugins || {};
   let speaking = 0;      // nombre d'annonces en cours ou en attente
   let watcherId = null;
+  let voiceIndex;        // voix française la plus naturelle installée sur le téléphone (-1 : celle par défaut)
+  let voiceName = '';
+
+  // Les voix « premium » ou « optimisées » (à télécharger dans Réglages > Accessibilité > Contenu énoncé > Voix)
+  // sont bien plus naturelles que la voix par défaut. On prend la meilleure disponible.
+  async function pickVoice() {
+    voiceIndex = -1;
+    try {
+      const { voices } = await P.TextToSpeech.getSupportedVoices();
+      let best = -1;
+      (voices || []).forEach((v, k) => {
+        if (!/^fr/i.test(v.lang || '')) return;
+        const id = (v.name || '') + ' ' + (v.voiceURI || '');
+        const score = (/premium/i.test(id) ? 6 : /enhanced|optimis|am.lior/i.test(id) ? 4 : 0) + (/^fr[-_]FR/i.test(v.lang) ? 2 : 0) - (/compact/i.test(id) ? 1 : 0);
+        if (score > best) { best = score; voiceIndex = k; voiceName = v.name || ''; }
+      });
+    } catch { /* liste indisponible : voix par défaut */ }
+  }
 
   return {
     hasVoice: !!P.TextToSpeech,
@@ -24,7 +42,10 @@ const Native = (() => {
       try {
         if (urgent) { await P.TextToSpeech.stop(); speaking = 0; }
         speaking++;
-        await P.TextToSpeech.speak({ text, lang: 'fr-FR', rate: 1.0, pitch: 1.0, volume: 1.0, category: 'playback' });
+        if (voiceIndex === undefined) await pickVoice();
+        const opts = { text, lang: 'fr-FR', rate: 1.0, pitch: 1.0, volume: 1.0, category: 'playback' };
+        if (voiceIndex >= 0) opts.voice = voiceIndex;
+        await P.TextToSpeech.speak(opts);
       } catch { /* annonce interrompue ou voix indisponible */ } finally {
         speaking = Math.max(0, speaking - 1);
       }
@@ -32,6 +53,7 @@ const Native = (() => {
     },
     stopVoice() { speaking = 0; if (P.TextToSpeech) P.TextToSpeech.stop().catch(() => {}); },
     busy() { return speaking > 0; },
+    voiceName() { return voiceName; },
 
     // GPS natif : appelle `onFix` à chaque position, y compris écran verrouillé.
     async watch(onFix, onError) {

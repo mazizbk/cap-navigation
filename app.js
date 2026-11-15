@@ -1575,27 +1575,39 @@ function gsvReset() {
   $('gsv').hidden = true;
 }
 
+// Photo du prochain carrefour. Règles, pour qu'elle aide au lieu de gêner :
+//   - elle apparaît TÔT, en même temps que l'annonce vocale, avec une grande flèche dessinée dessus ;
+//   - elle disparaît bien AVANT la manœuvre : pour l'approche finale, la carte et la flèche du bandeau restent seules ;
+//   - si on n'a pas au moins 5 secondes pour la regarder, elle n'est pas affichée du tout.
 function updateGoogleView(i, next, toMan) {
   const ok = !!S.gkey && S.gsvOn && next && isDecision(next) && next.type !== 'arrive' && !S.route.steps[i].roundabout;
   if (!ok) { if (gsv.step !== -1) gsvReset(); return; }
-  if (gsv.step !== i + 1) { gsvReset(); gsv.step = i + 1; }
+  if (gsv.step !== i + 1) { gsvReset(); gsv.step = i + 1; gsv.skip = false; }
+  if (gsv.skip) return;
 
   const fast = /ramp|fork|merge/.test(next.type);
-  const shownFrom = fast ? 800 : 300;                                             // distance à laquelle l'aperçu apparaît
-  const lead = Math.max(150, S.speed * (S.sim ? S.simMult : 1) * 8);              // avance pour le charger (8 s de route)
-  if (toMan < 30) { $('gsv').hidden = true; return; }                             // on y est : les yeux sur la route
+  const v = Math.max(S.speed, 5) * (S.sim ? S.simMult : 1);
+  const shownFrom = fast ? 800 : 320;                                  // elle apparaît à cette distance
+  const hiddenAt = Math.max(fast ? 300 : 110, v * 6);                  // elle disparaît ici : les 6 dernières secondes sans photo
+  const lead = Math.max(150, v * 8);                                   // avance pour la charger (8 s de route)
+  if (toMan <= hiddenAt) {
+    $('gsv').hidden = true;
+    if (!gsv.requested) gsv.skip = true;                               // manœuvre trop proche : pas de photo pour celle-ci
+    return;
+  }
   if (toMan > shownFrom + lead) return;
 
   if (!gsv.requested) {
+    if (toMan - hiddenAt < v * 5) { gsv.skip = true; return; }         // moins de 5 s à l'écran : on s'abstient
     gsv.requested = true;
     const step = gsv.step;
     const frame = $('gsv-frame');
     frame.onload = () => { if (gsv.step === step) gsv.loaded = true; };
-    // Point de vue : juste avant la manœuvre, jamais derrière la voiture.
+    // Point de vue : avant la manœuvre, dans le sens de la marche, pour que la sortie soit du même côté que dans la réalité.
     frame.src = streetViewEmbedUrl(Math.max(S.d + 10, viewpointOf(next)));
-    setHtml('gsv-icon', stepIcon(next, 52));
-    setHtml('gsv-what', fast ? 'Aperçu de la sortie' : next.roundabout ? 'Aperçu du rond-point' : 'Aperçu du carrefour');
-    setHtml('gsv-text', escapeHtml(next.act + (next.road && next.act !== next.text ? ' · ' + next.road : '')));
+    setHtml('gsv-arrow', stepIcon(next, 96));
+    setHtml('gsv-what', fast ? 'Photo de la sortie' : next.roundabout ? 'Photo du rond-point' : 'Photo du carrefour');
+    setHtml('gsv-text', escapeHtml(next.act));
   }
   if (gsv.loaded && toMan <= shownFrom) {
     setHtml('gsv-dist', 'dans ' + fmtDist(toMan));
@@ -1660,7 +1672,8 @@ function diagReport() {
     'Voix : ' + ('speechSynthesis' in window ? speechSynthesis.getVoices().filter((v) => v.lang.startsWith('fr')).length + ' voix françaises' : 'ABSENTE'),
     'Écran maintenu allumé : ' + ('wakeLock' in navigator ? (S.wake && !S.wake.released ? 'actif' : 'disponible, pas actif') : 'NON GÉRÉ') + (Native ? ' (+ module natif)' : ''),
     'Commandes vocales : ' + (typeof Voice !== 'undefined' && Voice.available ? (Voice.native ? 'oui (natif)' : 'oui (navigateur)') : 'NON DISPONIBLES ici'),
-    'Voix choisie : ' + (frVoice ? frVoice.name : 'celle du système'),
+    'Claude (commandes vocales) : ' + (typeof AI !== 'undefined' && AI.enabled ? 'clé enregistrée' : 'pas de clé'),
+    'Voix choisie : ' + (Native && Native.hasVoice ? (Native.voiceName() || 'celle du téléphone') : frVoice ? frVoice.name : 'celle du système'),
     'Réseau : ' + (navigator.onLine ? 'connecté' : 'HORS LIGNE'),
     'Clé Google : ' + (S.gkey ? 'enregistrée' : 'aucune'),
     'Trafic TomTom : ' + (ttKey() ? 'clé présente, ce mois : ' + ttUsage(0) + ' demandes de trafic et ' + ttUsage(0, 'r') + ' calculs d\'itinéraire (limite ' + TT.monthlyCap + ' chacun)' : 'pas de clé'),
