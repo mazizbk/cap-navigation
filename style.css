@@ -755,3 +755,10 @@ body.has-live #banner.exit #sign span:nth-of-type(n+2) { display: none; }
 body.has-live #banner.exit #sign em { flex-basis: auto; flex: 1; font-size: 14px; padding: 3px 8px; }
 /* Alerte plus discrète pendant la manœuvre (elle reste visible) */
 body.has-live #alert { padding: 6px 10px; font-size: 13px; }
+
+/* ===== Bandeau court quand la prochaine manœuvre est loin ===== */
+#banner.far { padding: 10px 14px; }
+#banner.far #sign, #banner.far #lanes, #banner.far #approach, #banner.far #man-road { display: none; }
+#banner.far #man-dist { font-size: 30px; }
+#banner.far #man-text { font-size: 16px; }
+#banner.far #man-icon svg { width: 52px; height: 52px; }

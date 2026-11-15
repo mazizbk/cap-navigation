@@ -918,9 +918,8 @@ function announce(k, next, toMan) {
     let text = '';
     if (toMan <= now) { flag = 5; text = ex.exit ? 'Sortez maintenant, à ' + ex.side : (next.act || next.text); }
     else if (toMan <= 650) { flag = 4; text = 'Dans 500 mètres, ' + what + '. Voie de ' + ex.side; }
-    else if (toMan <= 1200) { flag = 3; text = 'Dans 1 kilomètre, ' + what + dir; }
     else if (toMan <= 2300) { flag = 2; text = 'Dans 2 kilomètres, ' + what + dir + '. ' + lane; }
-    else if (toMan > 3000 && toMan < 30000 && !done) { flag = 1; const here = S.route.steps[k - 1]; text = 'Continuez' + (here && here.name ? ' sur ' + here.name : '') + ' pendant ' + fmtDistSpoken(toMan); }
+    else if (toMan > 5000 && !done) { flag = 1; const here = S.route.steps[k - 1]; text = 'Continuez' + (here && here.name ? ' sur ' + here.name : '') + ' pendant ' + fmtDistSpoken(toMan); }
     if (!flag || done >= flag) return;
     S.spoken[k] = flag;
     S.lastSaid = text;
@@ -946,9 +945,11 @@ function announce(k, next, toMan) {
   let flag = 0;
   let text = '';
   let steps = [k];
+  // Rond-point qu'on traverse tout droit : une seule annonce (à l'approche), pas de rappel « maintenant ».
+  const straightRing = /roundabout turn|rotary/.test(next.type) && next.modifier === 'straight';
   if (toMan <= now) {
     flag = 4;
-    if (arriving) { S.spoken[k] = 4; return; } // « Vous êtes arrivé » est dit à l'arrivée elle-même
+    if (arriving || straightRing) { S.spoken[k] = 4; return; } // « Vous êtes arrivé » est dit à l'arrivée elle-même
     text = isRing ? 'Prenez la ' + (ORDINAL[next.exit] || next.exit + 'e') + ' sortie' : (next.act || next.text);
     if (covered) { S.spoken[k] = 4; return; }  // on est déjà en train de le dire
   } else if (near && toMan <= near) {
@@ -957,7 +958,7 @@ function announce(k, next, toMan) {
       S.spoken[k] = Math.max(done, 3);
       // … mais si une autre manœuvre suit de très près, on la fait connaître maintenant, pour ne pas la découvrir au dernier moment.
       const follow = S.route.steps[k + 1];
-      if (follow && isTurn(follow) && follow.type !== 'arrive' && !follow.type.startsWith('exit') && follow.start - next.start < 160 && !(S.chained || {})[k + 1]) {
+      if (follow && isTurn(follow) && follow.type !== 'arrive' && !follow.type.startsWith('exit') && follow.modifier !== 'straight' && follow.start - next.start < 160 && !(S.chained || {})[k + 1]) {
         S.chained = S.chained || {};
         S.chained[k + 1] = true;
         speak('Ensuite, ' + lowerFirst(follow.act || follow.text), false, [k + 1]);
@@ -967,7 +968,7 @@ function announce(k, next, toMan) {
     text = 'Dans ' + roundSpoken(toMan) + ', ' + full;
     // Deux manœuvres rapprochées : on prévient de la seconde pour se placer tout de suite.
     const after = S.route.steps[k + 1];
-    if (after && after.type !== 'arrive' && !after.type.startsWith('exit') && after.start - next.start < 160 && isTurn(after)) {
+    if (after && after.type !== 'arrive' && !after.type.startsWith('exit') && after.modifier !== 'straight' && after.start - next.start < 160 && isTurn(after)) {
       text += ', puis ' + lowerFirst(after.act || after.text);
       S.chained = S.chained || {};
       S.chained[k + 1] = true;
@@ -977,11 +978,11 @@ function announce(k, next, toMan) {
   } else if (near && S.speed > 20 && toMan <= 2100 && toMan > 1200 && /ramp|fork/.test(next.type)) {
     flag = 2; // voie rapide : rappel 2 km avant la sortie
     text = 'Dans ' + roundSpoken(toMan) + ', ' + full + (lane ? '. ' + lane : '');
-  } else if (near && toMan > Math.max(500, near * 1.8)) {
+  } else if (near && toMan > 5000 && !done) {
+    // Long trajet sans rien à faire : une seule phrase pour rassurer, puis le silence.
     flag = 1;
     const here = S.route.steps[k - 1];
-    if (toMan > 3000) text = 'Continuez' + (here && here.name ? ' sur ' + here.name : '') + ' pendant ' + fmtDistSpoken(toMan);
-    else text = 'Dans ' + roundSpoken(toMan) + ', ' + full;
+    text = 'Continuez' + (here && here.name ? ' sur ' + here.name : '') + ' pendant ' + fmtDistSpoken(toMan);
   }
   if (!flag || done >= flag) return;
   S.spoken[k] = flag;
@@ -1287,6 +1288,9 @@ function updateUi(i, next, toMan) {
     const sign = (next.exitNo ? '<b>Sortie ' + escapeHtml(next.exitNo) + '</b>' : '') + next.dest.slice(next.name ? 0 : 1).map((d) => '<span>' + escapeHtml(d) + '</span>').join('');
     const ex = exitInfo(i + 1, next);
     const exitOn = !!ex && toMan < 2300;
+    // Loin de la prochaine manœuvre : bandeau court. Les panneaux et les voies n'arrivent qu'au moment utile.
+    const farLimit = ex || /ramp|fork|merge/.test(next.type) ? 2300 : 400;
+    $('banner').classList.toggle('far', toMan > farLimit);
     $('banner').classList.toggle('exit', exitOn);
     $('banner').classList.toggle('exit-a', exitOn && ex.motorway);
     if (exitOn) {
@@ -1616,6 +1620,19 @@ const viewpointOf = (step) => {
   return Math.max(0, step.start - (/ramp|fork|merge/.test(step.type) ? 150 : 35));
 };
 // Une étape où le conducteur doit choisir (virage, sortie, bretelle, rond-point, arrivée).
+// Manœuvre où l'on peut se tromper : sortie ou embranchement de voie rapide, rond-point à plusieurs sorties,
+// carrefour à 4 branches ou plus, ou branche voisine très proche de celle à prendre (moins de 35°).
+// Un simple virage à gauche dans une rue n'a pas besoin de photo : la carte suffit.
+function isTricky(step) {
+  if (!step || step.type === 'arrive') return false;
+  if (/ramp|fork/.test(step.type)) return true;
+  if ((step.type === 'roundabout' || step.type === 'rotary') && (step.exit || 0) >= 2) return true;
+  const j = step.junction;
+  if (!j) return false;
+  if (j.filter((b) => b.open || b.role).length >= 4) return true;
+  const out = j.find((b) => b.role === 'out');
+  return !!out && j.some((b) => b !== out && b.role !== 'in' && b.open && Math.abs(b.angle - out.angle) < 35);
+}
 const isDecision = (step) => !step.type.startsWith('exit') && (step.type === 'arrive' || isTurn(step) || /ramp|fork|merge/.test(step.type));
 
 // Affiche Street View au point `d` du trajet SANS quitter l'application : une vue plein écran avec un bouton Fermer.
@@ -1704,7 +1721,7 @@ function gsvReset() {
 function updateGoogleView(i, next, toMan) {
   // Street View qui avance avec la voiture (si sa clé existe) : il remplace l'aperçu fixe.
   if (typeof GLive !== 'undefined' && GLive.enabled() && S.gsvOn && GLive.update(i, next, toMan)) return;
-  const ok = !!S.gkey && S.gsvOn && next && isDecision(next) && next.type !== 'arrive' && !S.route.steps[i].roundabout;
+  const ok = !!S.gkey && S.gsvOn && next && isTricky(next) && S.d > 150 && !S.route.steps[i].roundabout;
   if (!ok) { if (gsv.step !== -1) gsvReset(); return; }
   if (gsv.step !== i + 1) { gsvReset(); gsv.step = i + 1; gsv.skip = false; }
   if (gsv.skip) return;
