@@ -422,7 +422,7 @@ function trafficSummary() {
     const min = Math.round((R.ttDelay || 0) / 60);
     return (R.closed ? '⛔ Route signalée fermée sur le trajet · ' : '') +
       (min >= 1 ? '🚗 +' + min + ' min de trafic en ce moment' : 'Trafic fluide en ce moment') +
-      (R.toll ? ' · avec péage' : ' · sans péage') + ' · source TomTom';
+      (R.toll ? ' · avec péage' : ' · sans péage');
   }
   if (!R.trafficKnown) {
     if (ttKey()) return 'Trafic TomTom indisponible' + (R.trafficNote ? ' (' + R.trafficNote + ')' : '');

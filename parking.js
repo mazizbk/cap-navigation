@@ -202,10 +202,10 @@ function showTripCost() {
   if (!R) { box.hidden = true; return; }
   const eco = cheapestRoute();
   box.hidden = false;
-  box.innerHTML = '⛽ Carburant ≈ <b>' + Cost.euros(R).toFixed(Cost.euros(R) < 10 ? 1 : 0).replace('.', ',') + ' €</b> (' + Cost.litres(R).toFixed(1).replace('.', ',') + ' L)' +
-    (R.toll ? ' · péage en plus' : '') + (eco === R && (S.alts || []).length > 1 ? ' · <b class="eco">le plus économique</b>' : '') +
-    '<br><button type="button" id="conso-edit" class="linklike">' + String(Cost.conso()).replace('.', ',') + ' L/100 km · SP95-E10 à ' + Cost.price.toFixed(2).replace('.', ',') + ' €' +
-    (Cost.priceKnown ? ' (moyenne près du départ)' : ' (prix estimé)') + ' — modifier</button>';
+  // Une seule ligne courte ; le détail (consommation, prix au litre) en touchant le chiffre.
+  box.innerHTML = '⛽ ≈ <b>' + Cost.euros(R).toFixed(Cost.euros(R) < 10 ? 1 : 0).replace('.', ',') + ' €</b> de carburant' +
+    (eco === R && (S.alts || []).length > 1 ? ' · <b class="eco">le plus économique</b>' : '') +
+    ' <button type="button" id="conso-edit" class="linklike" title="' + String(Cost.conso()).replace('.', ',') + ' L/100 km, SP95-E10 à ' + Cost.price.toFixed(2).replace('.', ',') + ' €">réglage</button>';
   $('conso-edit').addEventListener('click', () => {
     const v = window.prompt('Consommation de la voiture, en litres aux 100 km :', String(Cost.conso()).replace('.', ','));
     const n = v ? parseFloat(v.replace(',', '.')) : NaN;

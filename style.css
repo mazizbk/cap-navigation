@@ -805,3 +805,10 @@ body:has(#stopcard:not([hidden])) #alert { display: none; }
 body:not(.navigating) #road-now { display: none; }
 body.has-live #road-now { display: none; }
 .vehicle { filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.55)); }
+
+/* ---------- feuille du trajet : moins de petites lignes ---------- */
+#summary-traffic { font-size: 14px; margin-top: 6px; }
+#trip-cost { font-size: 14px; margin: 4px 0 8px; }
+#trip-cost .linklike { font-size: 12px; margin-left: 4px; }
+#summary-hazards { font-size: 13px; }
+body.has-route #summary-text span { font-size: 13px; }
