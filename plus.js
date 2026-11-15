@@ -121,7 +121,7 @@ const Plus = (() => {
     const at = new Date(Date.now() + (R.duration + (R.jamDelay || 0)) * 1000);
     try {
       const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + dest.lat.toFixed(3) + '&longitude=' + dest.lon.toFixed(3) +
-        '&hourly=precipitation_probability,precipitation&forecast_days=2&timezone=auto';
+        '&hourly=precipitation_probability,precipitation,temperature_2m&forecast_days=2&timezone=auto';
       const j = await (await fetch(url, { signal: AbortSignal.timeout(6000) })).json();
       const h = j.hourly;
       const key = at.getFullYear() + '-' + String(at.getMonth() + 1).padStart(2, '0') + '-' + String(at.getDate()).padStart(2, '0') + 'T' + String(at.getHours()).padStart(2, '0') + ':00';
@@ -130,9 +130,13 @@ const Plus = (() => {
       const prob = h.precipitation_probability[k] || 0;
       const mm = h.precipitation[k] || 0;
       if (prob >= 60 || mm >= 0.5) rainText = mm >= 3 ? 'Forte pluie prévue à l\'arrivée.' : 'Pluie prévue à l\'arrivée.';
+      // Froid : jusqu'à +2 °C avec de l'humidité (pluie récente ou prévue), ou sous zéro : la route peut geler.
+      const cold = Math.min(...h.temperature_2m.slice(Math.max(0, k - 2), k + 1));
+      const wet = h.precipitation.slice(Math.max(0, k - 6), k + 1).some((v) => v > 0.1) || prob >= 40;
+      if (cold <= 2 && (wet || cold <= 0)) rainText = (cold <= 0 ? 'Gel prévu à l\'arrivée' : 'Températures proches de zéro à l\'arrivée') + ', prudence : risque de verglas.' + (rainText ? ' ' + rainText : '');
     } catch { /* météo indisponible : on n'en parle pas */ }
     const el = $('summary-rain');
-    if (el && R === S.route) { el.textContent = rainText ? '🌧 ' + rainText : ''; el.hidden = !rainText; }
+    if (el && R === S.route) { el.textContent = rainText ? (/verglas/.test(rainText) ? '❄️ ' : '🌧 ') + rainText : ''; el.hidden = !rainText; }
     return rainText;
   }
 
@@ -230,6 +234,8 @@ const Plus = (() => {
   async function onStart() {
     const R = S.route;
     logTrip();
+    hideCard();
+    if (!S.resumeTo) { trip.t0 = Date.now(); trip.m = 0; trip.last = 0; }
     meeting = null; lateSaid = 0; S.etaMs = 0;
     const [t, ev] = await Promise.all([rainAtArrival(R), findMeeting()]);
     S.meeting = null;                         // utilisé pour ce trajet seulement
@@ -241,8 +247,96 @@ const Plus = (() => {
     setTimeout(() => { if (S.mode === 'nav' && !voiceBusy()) speak(text); }, 9000);
   }
 
+  // ---------- 7. arrivée : bilan du trajet, et chemin à pied depuis le parking
+  const trip = { t0: 0, m: 0, last: 0 };
+  function tripTick() {
+    const now = performance.now();
+    if (trip.last && S.mode === 'nav') trip.m += S.speed * Math.min(2, (now - trip.last) / 1000) * (S.sim ? S.simMult || 1 : 1);
+    trip.last = now;
+  }
+  function card(text, actions) {
+    let el = $('arrivecard');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'arrivecard';
+      el.className = 'panel';
+      document.body.appendChild(el);
+    }
+    el.innerHTML = '';
+    const span = document.createElement('div');
+    span.className = 'ac-text';
+    span.textContent = text;
+    el.appendChild(span);
+    const row = document.createElement('div');
+    row.className = 'ac-row';
+    for (const [label, fn, primary] of actions) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn' + (primary ? ' btn-primary' : '');
+      b.textContent = label;
+      b.addEventListener('click', () => { el.hidden = true; fn(); });
+      row.appendChild(b);
+    }
+    el.appendChild(row);
+    el.hidden = false;
+  }
+  function hideCard() { const el = $('arrivecard'); if (el) el.hidden = true; }
+  function walkUrl(from, to) {
+    return 'https://maps.apple.com/?saddr=' + from[1].toFixed(6) + ',' + from[0].toFixed(6) + '&daddr=' + to.lat.toFixed(6) + ',' + to.lon.toFixed(6) + '&dirflg=w';
+  }
+  // Appelé par arrive() (arrivée finale, pas une étape).
+  function onArrive() {
+    const km = trip.m / 1000;
+    const min = Math.max(1, Math.round((Date.now() - trip.t0) / 60000));
+    const parts = [];
+    if (trip.t0 && km >= 1) {
+      parts.push(fmtDist(trip.m) + ' en ' + fmtDuration(min * 60));
+      if (km >= 5) {
+        parts.push('moyenne ' + Math.round(km / (min / 60)) + ' km/h');
+        const euros = Cost.litres({ total: trip.m, duration: min * 60 }) * Cost.price;
+        parts.push('≈ ' + euros.toFixed(euros < 10 ? 1 : 0).replace('.', ',') + ' € de carburant');
+      }
+    }
+    const dest = S.finalDest;
+    const here = S.pos;
+    const walkM = dest && here ? Geo.distance(here, [dest.lon, dest.lat]) : 0;
+    const actions = [];
+    let text = parts.length ? 'Trajet : ' + parts.join(' · ') : 'Vous êtes arrivé.';
+    if (walkM > 80) {
+      const mins = Math.max(1, Math.round((walkM * 1.3) / 80));
+      const name = dest.label.split(',')[0];
+      text = 'Encore ' + mins + ' min à pied jusqu\'à ' + name + '.\n' + text;
+      actions.push(['🚶 Chemin à pied', () => window.open(walkUrl(here, dest), '_blank'), true]);
+      setTimeout(() => speak('Il reste environ ' + mins + (mins > 1 ? ' minutes' : ' minute') + ' à pied jusqu\'à ' + name + '. Le chemin est à l\'écran.'), 2500);
+    }
+    actions.push(['OK', () => {}, !actions.length]);
+    card(text, actions);
+  }
+
+  // ---------- 8. « où suis-je ? »
+  async function whereAmI() {
+    if (!S.pos) { speak('Je n\'ai pas encore votre position.'); return; }
+    let road = '';
+    if (S.mode === 'nav' && S.route) {
+      const st = S.route.steps[stepIndexAt(S.d)];
+      road = [st && st.ref, st && st.name].filter(Boolean)[0] || '';
+    }
+    let town = '';
+    try {
+      const j = await (await fetch('https://photon.komoot.io/reverse?lon=' + S.pos[0].toFixed(5) + '&lat=' + S.pos[1].toFixed(5) + '&lang=fr', { signal: AbortSignal.timeout(5000) })).json();
+      const pr = (j.features && j.features[0] && j.features[0].properties) || {};
+      town = pr.city || pr.town || pr.village || pr.county || '';
+      if (!road) road = pr.street || '';
+    } catch { /* sans réseau : la route suffit */ }
+    let text = 'Vous êtes' + (road ? ' sur ' + road : '') + (town ? (road ? ', à ' : ' à ') + town : '') + '.';
+    if (text === 'Vous êtes.') text = 'Je ne sais pas encore où nous sommes précisément.';
+    if (S.mode === 'nav' && S.to) text += ' Arrivée vers ' + $('eta').innerText.trim().replace(':', ' heures ') + '.';
+    speak(text, true);
+  }
+
   let last = 0;
   function tick() {
+    tripTick();
     curveTick();
     const now = performance.now();
     if (now - last > 5000) { last = now; meetingTick(); }
@@ -250,5 +344,5 @@ const Plus = (() => {
 
   $('eta')?.addEventListener('click', shareEta);
   renderCarChip();
-  return { tick, findCurves, rememberCar, findCar, renderCarChip, renderHabitChip, shareEta, rainAtArrival, onStart, habit, goHabit, findMeeting };
+  return { tick, onArrive, hideCard, whereAmI, findCurves, rememberCar, findCar, renderCarChip, renderHabitChip, shareEta, rainAtArrival, onStart, habit, goHabit, findMeeting };
 })();

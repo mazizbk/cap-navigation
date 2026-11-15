@@ -114,7 +114,7 @@ const Voice = (() => {
     trafic: 'trafic', eviter_peages: 'évite les péages', autoriser_peages: 'avec péage', eviter_autoroutes: 'évite les autoroutes',
     autoriser_autoroutes: 'avec autoroute', demarrer: 'démarrer', recentrer: 'recentre', changer_vue: 'change la vue', autre_trajet: 'autre trajet',
     enregistrer_domicile: 'enregistre comme domicile', enregistrer_travail: 'enregistre comme travail',
-    parking: 'parking', oui: 'oui', non: 'non', trajet_economique: 'trajet le plus économique', cout_trajet: 'combien coûte le trajet en carburant', ma_voiture: 'où est ma voiture', partager_arrivee: "partage mon heure d'arrivée" };
+    parking: 'parking', oui: 'oui', non: 'non', trajet_economique: 'trajet le plus économique', cout_trajet: 'combien coûte le trajet en carburant', ma_voiture: 'où est ma voiture', ou_suis_je: 'où suis-je', partager_arrivee: "partage mon heure d'arrivée" };
 
   function appState() {
     const places = Places.read();
@@ -191,6 +191,7 @@ const Voice = (() => {
     if (/^(non|pas la peine|laisse|annule)\b/.test(q) && pending) { pending = null; speak('D\'accord.'); return; }
     pending = null;
     if (/\b(ou est|retrouve|ou j'ai gare|ou ai je gare)\b.*\b(voiture|auto)\b|^ma voiture$/.test(q)) { Plus.findCar(); return; }
+    if (/\bou (suis je|sommes nous|je suis|on est)\b/.test(q)) { await Plus.whereAmI(); return; }
     if (/\b(partage|envoie)\b.*\b(arrivee|heure)\b/.test(q)) { speak("Touchez l'heure d'arrivée en bas de l'écran pour la partager."); return; }
     if (/\b(parking|garer|stationner|stationnement)\b/.test(q)) {
       const best = await openParking();

@@ -26,7 +26,7 @@ const AI = (() => {
 
   const COMMANDS = ['domicile', 'travail', 'station_moins_chere', 'station_plus_proche', 'stations', 'arreter', 'silence',
     'remettre_le_son', 'repeter', 'heure_arrivee', 'trafic', 'eviter_peages', 'autoriser_peages', 'eviter_autoroutes', 'autoriser_autoroutes',
-    'demarrer', 'recentrer', 'changer_vue', 'autre_trajet', 'enregistrer_domicile', 'enregistrer_travail', 'parking', 'oui', 'non', 'trajet_economique', 'cout_trajet', 'ma_voiture', 'partager_arrivee'];
+    'demarrer', 'recentrer', 'changer_vue', 'autre_trajet', 'enregistrer_domicile', 'enregistrer_travail', 'parking', 'oui', 'non', 'trajet_economique', 'cout_trajet', 'ma_voiture', 'partager_arrivee', 'ou_suis_je'];
 
   const TOOLS = [
     {
@@ -36,7 +36,7 @@ const AI = (() => {
         'arreter : arrête le guidage. silence / remettre_le_son : voix. repeter : redit la consigne. heure_arrivee, trafic, cout_trajet : informations sur le trajet. ' +
         'eviter_peages, autoriser_peages, eviter_autoroutes, autoriser_autoroutes : options. demarrer : lance le guidage prêt. recentrer, changer_vue : carte. ' +
         'autre_trajet, trajet_economique : changer de variante avant le départ. enregistrer_domicile/travail : mémorise la destination affichée. ' +
-        'parking : où se garer près de l\'arrivée. ma_voiture : retrouver où la voiture est garée. partager_arrivee : partager l\'heure d\'arrivée.oui / non : réponse à une proposition que l\'application vient de faire.',
+        'parking : où se garer près de l\'arrivée. ma_voiture : retrouver où la voiture est garée. partager_arrivee : partager l\'heure d\'arrivée. ou_suis_je : dire la route et la ville où l\'on est. oui / non : réponse à une proposition que l\'application vient de faire.',
       strict: true,
       input_schema: {
         type: 'object',

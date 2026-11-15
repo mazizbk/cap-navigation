@@ -1491,7 +1491,7 @@ function arrive() {
   S.mode = 'arrived';
   S.speed = 0;
   cancelAnimationFrame(S.raf);
-  if (typeof Plus !== 'undefined' && !S.sim) Plus.rememberCar();
+  if (typeof Plus !== 'undefined') { if (!S.sim) Plus.rememberCar(); Plus.onArrive(); }
   setHtml('man-icon', stepIcon({ type: 'arrive' }, 80));
   $('sign').hidden = true;
   $('banner').classList.remove('exit', 'exit-a');
@@ -1512,6 +1512,7 @@ function arrive() {
 }
 
 function stopNav() {
+  if (typeof Plus !== 'undefined') Plus.hideCard();
   $('road-now').hidden = true;
   $('limit').hidden = true; document.body.classList.remove('overspeed'); S.lastLimit = 0;
   if (S.updateWaiting) setTimeout(() => location.reload(), 300);

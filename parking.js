@@ -224,7 +224,7 @@ function showTripCost() {
 
 // Appelé par afterPlan (extras.js) : prix moyen autour du départ, puis affichage.
 async function afterPlanCost() {
-  S.finalDest = null;
+  if (!(S.to && /\(près de /.test(S.to.label))) S.finalDest = null; // un parking garde la vraie destination (chemin à pied)
   $('park-btn').hidden = false;
   showTripCost();
   const start = S.route && S.route.coords[0];
