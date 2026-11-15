@@ -214,8 +214,8 @@ const Voice = (() => {
       return;
     }
     if (/\b(repete|redis|redire|pardon|comment)\b/.test(q)) { if (nav) repeatInstruction(); else speak('Aucun guidage en cours.'); return; }
-    if (/\b(silence|tais toi|muet|coupe (le son|la voix))\b/.test(q)) { if (!S.muted) $('mute').click(); hud('Voix coupée'); return; }
-    if (/\b(remets|reactive|active|rallume) (le son|la voix)\b|\bparle\b/.test(q)) { if (S.muted) $('mute').click(); speak('La voix est réactivée.'); return; }
+    if (/\b(silence|tais toi|muet|coupe (le son|la voix))\b/.test(q)) { setMuted(true); hud('Voix coupée'); return; }
+    if (/\b(remets|reactive|active|rallume) (le son|la voix)\b|\bparle\b/.test(q)) { setMuted(false); speak('La voix est réactivée.'); return; }
     if (/\b(arrete|stop|annule|termine|quitte)\b/.test(q)) { if (nav) { stopNav(); speak('Guidage arrêté.', true); } else speak('Aucun guidage en cours.'); return; }
 
     if (/\b(station|essence|carburant|plein|sans plomb)\b/.test(q)) {

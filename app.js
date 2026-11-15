@@ -40,6 +40,7 @@ const S = {
   hazards: [], hazardDone: {}, hazardMarkers: [], overAt: 0, // alertes sur le trajet (voir hazards.js)
   carScreen: readStore('carScreen') === '1',
   avoidTolls: readStore('avoidTolls') === '1', avoidMotorways: readStore('avoidMotorways') === '1', alts: [],
+  muted: readStore('muted') === '1',
   gsvOn: readStore('gsvOn') !== '0', // aperçu photo du prochain carrefour pendant le guidage
   streetOn: false, // photos de rue libres (Panoramax) : retirées, trop inégales. Remplacées par Google Street View.
   // Clé Google Maps : celle du fichier config.js (installée par tools/set_key.ps1), sinon celle saisie sur l'appareil.
@@ -752,11 +753,16 @@ function stopVoice() {
 
 // Meilleure voix française installée sur l'appareil (les voix « améliorées » ou « premium » d'abord).
 let frVoice = null;
+function webVoices() {
+  if (!('speechSynthesis' in window)) return [];
+  return speechSynthesis.getVoices().map((v) => ({ v, name: v.name, score: voiceScore(v.name, v.voiceURI, v.lang) + (v.localService ? 1 : 0) }))
+    .filter((x) => x.score >= 0).sort((x, y) => y.score - x.score);
+}
 function pickVoice() {
-  if (!('speechSynthesis' in window)) return;
-  const score = (v) => (/premium|enhanced|am.lior|siri/i.test(v.name + ' ' + v.voiceURI) ? 4 : 0) + (/^fr[-_]FR/i.test(v.lang) ? 2 : 0) +
-    (v.localService ? 1 : 0) - (/compact/i.test(v.voiceURI || '') ? 1 : 0);
-  frVoice = speechSynthesis.getVoices().filter((v) => /^fr/i.test(v.lang)).sort((a, b) => score(b) - score(a))[0] || null;
+  const list = webVoices();
+  const wanted = savedVoice();
+  const pick = list.find((x) => x.name === wanted) || list[0];
+  frVoice = pick ? pick.v : null;
 }
 if ('speechSynthesis' in window) { pickVoice(); speechSynthesis.addEventListener('voiceschanged', pickVoice); }
 
@@ -796,7 +802,7 @@ function speak(text, urgent, steps) {
     const u = new SpeechSynthesisUtterance(text);
     u.lang = 'fr-FR';
     if (frVoice) u.voice = frVoice;
-    u.rate = 1;
+    u.rate = voiceRate();
     speechSynthesis.speak(u);
   } catch { /* pas de synthèse vocale */ }
 }
@@ -1381,10 +1387,19 @@ $('recenter').addEventListener('click', () => {
   if (S.mode === 'arrived') map.easeTo({ center: S.pos, bearing: S.bearing, zoom: 17.5, pitch: 60 });
 });
 $('mute').addEventListener('click', () => {
-  S.muted = !S.muted;
-  $('mute').textContent = S.muted ? '🔇' : '🔊';
-  if (S.muted) stopVoice();
+  setMuted(!S.muted);
 });
+// Voix activée ou coupée : même réglage partout (bouton du guidage, réglages, commande vocale), et il est mémorisé.
+function setMuted(on) {
+  S.muted = !!on;
+  try { localStorage.setItem('muted', S.muted ? '1' : '0'); } catch { /* stockage indisponible */ }
+  $('mute').textContent = S.muted ? '🔇' : '🔊';
+  const box = document.getElementById('voice-on');
+  if (box) box.checked = !S.muted;
+  if (S.muted) stopVoice();
+}
+$('mute').textContent = S.muted ? '🔇' : '🔊';
+
 // Simulation : l'utilisateur choisit lui-même la vitesse du véhicule, en km/h, et peut mettre en pause.
 // « Auto » (0) = la vitesse normale de chaque route, avec ralentissement avant les virages.
 function simShow() {

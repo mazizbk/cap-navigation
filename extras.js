@@ -230,3 +230,48 @@ $('fuel-btn').addEventListener('click', openFuel);
 $('fuel-close').addEventListener('click', () => { $('fuel').hidden = true; });
 
 renderShortcuts();
+
+// ================================================================= réglage de la voix
+// Liste les voix françaises de l'appareil, de la plus naturelle à la moins naturelle, et permet de les écouter.
+async function fillVoices() {
+  const native = Native && Native.hasVoice;
+  const list = native ? await Native.voices() : webVoices().map((x) => ({ name: x.name, score: x.score }));
+  const sel = $('voice-select');
+  const current = native ? Native.voiceName() : (frVoice ? frVoice.name : '');
+  sel.innerHTML = '';
+  for (const v of list) {
+    const o = document.createElement('option');
+    o.value = v.name;
+    o.textContent = v.name + (v.score >= 60 ? ' — très naturelle' : v.score >= 40 ? ' — naturelle' : ' — ordinaire');
+    o.selected = v.name === current;
+    sel.appendChild(o);
+  }
+  const best = list[0] ? list[0].score : 0;
+  $('voice-note').textContent = !list.length ? 'Aucune voix française trouvée sur cet appareil.'
+    : best >= 40 ? 'Voix naturelle trouvée et utilisée : ' + (current || list[0].name) + '.'
+    : 'Cet appareil n\'a que des voix ordinaires. Pour une voix humaine sur iPhone : Réglages › Accessibilité › Contenu énoncé › Voix › Français, téléchargez une voix « premium » (Audrey, Thomas…), puis revenez ici.';
+}
+async function applyVoice() {
+  try { localStorage.setItem('voiceName', $('voice-select').value); localStorage.setItem('voiceRate', $('voice-rate').value); } catch { /* stockage indisponible */ }
+  if (Native && Native.hasVoice) await Native.useVoice(); else pickVoice();
+}
+$('voice-select').addEventListener('change', applyVoice);
+$('voice-rate').addEventListener('change', applyVoice);
+$('voice-rate').value = String(voiceRate());
+$('voice-test').addEventListener('click', async () => {
+  await applyVoice();
+  const was = S.muted;
+  S.muted = false;
+  speak('Dans 300 mètres, au rond-point, prenez la deuxième sortie vers la rue de Nantes.', true);
+  S.muted = was;
+});
+$('voice-on').checked = !S.muted;
+$('voice-on').addEventListener('change', (ev) => setMuted(!ev.target.checked));
+$('voice-settings').addEventListener('toggle', () => { if ($('voice-settings').open) fillVoices(); });
+if ('speechSynthesis' in window) speechSynthesis.addEventListener('voiceschanged', () => { if ($('voice-settings').open) fillVoices(); });
+// Quand on revient des Réglages de l'iPhone après avoir téléchargé une voix, la liste se met à jour toute seule.
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState !== 'visible') return;
+  if (Native && Native.hasVoice) await Native.useVoice(); else pickVoice();
+  if ($('voice-settings').open) fillVoices();
+});

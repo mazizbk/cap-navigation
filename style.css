@@ -586,3 +586,10 @@ body.listening #mic-btn, body.listening #mic-nav { background: var(--accent); co
 #trip-cost .eco { color: var(--accent); }
 .linklike { appearance: none; background: none; border: 0; padding: 4px 0; color: var(--muted); font: inherit; font-size: 12px; text-decoration: underline; cursor: pointer; text-align: left; }
 .choice .cost { font-size: 12px; color: var(--accent); white-space: nowrap; }
+
+#voice-settings { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 14px; color: var(--muted); }
+#voice-settings summary { cursor: pointer; color: var(--text); }
+#voice-settings p { margin: 8px 0; }
+#voice-settings .row { display: flex; gap: 8px; }
+#voice-select { flex: 1; min-width: 0; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: #131b2b; color: var(--text); font: inherit; }
+#voice-rate { vertical-align: middle; width: 55%; }

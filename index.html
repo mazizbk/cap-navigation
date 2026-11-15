@@ -82,6 +82,16 @@
       </div>
     </div>
     <p id="status" role="status"></p>
+    <details id="voice-settings">
+      <summary>Voix du guidage</summary>
+      <label class="option"><input type="checkbox" id="voice-on" checked> Voix activée</label>
+      <p id="voice-note"></p>
+      <div class="row">
+        <select id="voice-select" aria-label="Choix de la voix"></select>
+        <button type="button" id="voice-test" class="btn">Écouter</button>
+      </div>
+      <label class="option" style="margin-top:8px">Vitesse <input type="range" id="voice-rate" min="0.8" max="1.2" step="0.05" value="1"></label>
+    </details>
     <details id="ai-settings">
       <summary>Commandes vocales avec Claude</summary>
       <p>Avec une clé API Anthropic, vous parlez librement (« je n'ai presque plus d'essence », « ramène-moi »). La clé reste sur cet appareil.</p>

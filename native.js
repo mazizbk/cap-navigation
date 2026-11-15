@@ -7,6 +7,25 @@
  *   - le maintien de l'écran allumé.
  * Non testé sur un appareil : préparé d'après la documentation des modules.
  */
+// Note d'une voix française : plus elle est haute, plus la voix est naturelle. Sert au choix automatique.
+// L'iPhone contient des voix volontairement robotiques ou fantaisistes (Eddy, Flo, Rocko, Grand-mère, Cloches…) :
+// elles sont écartées d'office. Les voix « premium » puis « optimisées » passent devant, puis les voix classiques.
+function voiceScore(name, uri, lang) {
+  const id = (name || '') + ' ' + (uri || '');
+  if (!/^fr/i.test(lang || '')) return -100;
+  if (/eloquence|speech\.synthesis\.voice|novelty|grand-?m.re|grand-?p.re|eddy|flo\b|grandma|grandpa|reed|rocko|sandy|shelley|jacques|bells|boing|bubbles|cellos|whisper|zarvox|trinoids|organ|albert|bahh|fred|junior|ralph|kathy|wobble|superstar|jester|bad news|good news/i.test(id)) return -50;
+  let s = /^fr[-_]FR/i.test(lang) ? 20 : 0;
+  if (/premium/i.test(id)) s += 60;
+  else if (/enhanced|optimis|am.lior/i.test(id)) s += 40;
+  if (/siri/i.test(id)) s += 30;
+  if (/audrey|aur.lie|thomas|marie|am.lie|chantal|nicolas|hortense|denise|henri|google fran/i.test(id)) s += 10;
+  if (/natural|neural|online/i.test(id)) s += 35; // voix neuronales de certains navigateurs
+  if (/compact/i.test(id)) s -= 5;
+  return s;
+}
+const savedVoice = () => { try { return localStorage.getItem('voiceName') || ''; } catch { return ''; } };
+const voiceRate = () => { try { const v = parseFloat(localStorage.getItem('voiceRate')); return v >= 0.7 && v <= 1.3 ? v : 1; } catch { return 1; } };
+
 const Native = (() => {
   const cap = window.Capacitor;
   if (!cap || typeof cap.isNativePlatform !== 'function' || !cap.isNativePlatform()) return null;
@@ -18,18 +37,18 @@ const Native = (() => {
 
   // Les voix « premium » ou « optimisées » (à télécharger dans Réglages > Accessibilité > Contenu énoncé > Voix)
   // sont bien plus naturelles que la voix par défaut. On prend la meilleure disponible.
+  let list = [];         // voix françaises utilisables : { index, name, score }
   async function pickVoice() {
     voiceIndex = -1;
+    voiceName = '';
     try {
       const { voices } = await P.TextToSpeech.getSupportedVoices();
-      let best = -1;
-      (voices || []).forEach((v, k) => {
-        if (!/^fr/i.test(v.lang || '')) return;
-        const id = (v.name || '') + ' ' + (v.voiceURI || '');
-        const score = (/premium/i.test(id) ? 6 : /enhanced|optimis|am.lior/i.test(id) ? 4 : 0) + (/^fr[-_]FR/i.test(v.lang) ? 2 : 0) - (/compact/i.test(id) ? 1 : 0);
-        if (score > best) { best = score; voiceIndex = k; voiceName = v.name || ''; }
-      });
-    } catch { /* liste indisponible : voix par défaut */ }
+      list = (voices || []).map((v, k) => ({ index: k, name: v.name || ('Voix ' + k), score: voiceScore(v.name, v.voiceURI, v.lang) }))
+        .filter((v) => v.score >= 0).sort((x, y) => y.score - x.score);
+      const wanted = savedVoice();
+      const pick = list.find((v) => v.name === wanted) || list[0];
+      if (pick) { voiceIndex = pick.index; voiceName = pick.name; }
+    } catch { /* liste indisponible : voix par défaut du téléphone */ }
   }
 
   return {
@@ -43,7 +62,7 @@ const Native = (() => {
         if (urgent) { await P.TextToSpeech.stop(); speaking = 0; }
         speaking++;
         if (voiceIndex === undefined) await pickVoice();
-        const opts = { text, lang: 'fr-FR', rate: 1.0, pitch: 1.0, volume: 1.0, category: 'playback' };
+        const opts = { text, lang: 'fr-FR', rate: voiceRate(), pitch: 1.0, volume: 1.0, category: 'playback' };
         if (voiceIndex >= 0) opts.voice = voiceIndex;
         await P.TextToSpeech.speak(opts);
       } catch { /* annonce interrompue ou voix indisponible */ } finally {
@@ -54,6 +73,9 @@ const Native = (() => {
     stopVoice() { speaking = 0; if (P.TextToSpeech) P.TextToSpeech.stop().catch(() => {}); },
     busy() { return speaking > 0; },
     voiceName() { return voiceName; },
+    // Liste des voix françaises du téléphone, de la plus naturelle à la moins naturelle.
+    async voices() { await pickVoice(); return list.map((v) => ({ name: v.name, score: v.score })); },
+    async useVoice() { await pickVoice(); },
 
     // GPS natif : appelle `onFix` à chaque position, y compris écran verrouillé.
     async watch(onFix, onError) {
