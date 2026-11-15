@@ -826,7 +826,9 @@ async function startNav(sim) {
   $('nav').hidden = false;
   $('recenter').hidden = true;
   $('arrival').hidden = true;
-  $('sim-speed').hidden = !sim;
+  $('sim-ctl').hidden = !sim;
+  S.simPaused = false;
+  simShow();
   $('stop').textContent = 'Arrêter';
   document.body.classList.add('navigating');
   setDriveStyle(true);
@@ -952,7 +954,8 @@ function frame(t) {
     target = clamp(target, 4, 38);
     if (toMan < 45) target = Math.min(target, 5 + toMan * 0.2); // on ralentit avant de tourner
     S.speed += (target - S.speed) * Math.min(1, dt * 1.2);
-    S.d = Math.min(R.total, S.d + S.speed * dt * S.simMult);
+    if (S.simPaused) S.speed = 0; // en pause : on reste sur place, l'affichage continue
+    else S.d = Math.min(R.total, S.d + S.speed * dt * S.simMult);
   } else if (S.gps) {
     // Plus de relevé depuis 7 s (tunnel, parking couvert…) : on le dit, plutôt que de laisser croire que tout va bien.
     if (!S.gpsLost && t - S.gps.t > 7000) {
@@ -1232,10 +1235,23 @@ $('mute').addEventListener('click', () => {
   $('mute').textContent = S.muted ? '🔇' : '🔊';
   if (S.muted) try { speechSynthesis.cancel(); } catch { /* rien */ }
 });
-$('sim-speed').addEventListener('click', () => {
-  S.simMult = S.simMult === 1 ? 2 : S.simMult === 2 ? 5 : S.simMult === 5 ? 10 : 1;
-  $('sim-speed').textContent = '×' + S.simMult;
-});
+// Simulation : l'utilisateur règle lui-même la vitesse de défilement, et peut mettre en pause.
+const SIM_LEVELS = [0.5, 1, 2, 3, 5, 10, 20];
+function simShow() {
+  $('sim-x').textContent = '×' + String(S.simMult).replace('.', ',');
+  $('sim-pause').textContent = S.simPaused ? '▶' : '⏸';
+  $('sim-minus').disabled = S.simMult <= SIM_LEVELS[0];
+  $('sim-plus').disabled = S.simMult >= SIM_LEVELS[SIM_LEVELS.length - 1];
+}
+function simStep(dir) {
+  let i = SIM_LEVELS.indexOf(S.simMult);
+  if (i < 0) i = 1;
+  S.simMult = SIM_LEVELS[clamp(i + dir, 0, SIM_LEVELS.length - 1)];
+  simShow();
+}
+$('sim-minus').addEventListener('click', () => simStep(-1));
+$('sim-plus').addEventListener('click', () => simStep(1));
+$('sim-pause').addEventListener('click', () => { S.simPaused = !S.simPaused; simShow(); });
 // Quand on revient sur l'application, le verrou d'écran doit être redemandé.
 document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState === 'visible' && S.mode === 'nav') {

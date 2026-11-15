@@ -103,6 +103,13 @@
         <div id="street-turn" hidden><span id="street-turn-icon"></span><span id="street-turn-text"></span></div>
         <div id="street-cap"></div>
       </div>
+      <!-- Simulation : réglage de la vitesse de défilement -->
+      <div id="sim-ctl" class="panel" hidden>
+        <button type="button" id="sim-pause" class="icon-btn" aria-label="Pause ou reprise de la simulation">⏸</button>
+        <button type="button" id="sim-minus" class="icon-btn" aria-label="Ralentir la simulation">−</button>
+        <span id="sim-x">×1</span>
+        <button type="button" id="sim-plus" class="icon-btn" aria-label="Accélérer la simulation">+</button>
+      </div>
     </div>
 
     <button id="recenter" class="btn btn-primary" hidden>Recentrer</button>
@@ -123,7 +130,6 @@
         <div id="remaining"></div>
       </div>
       <div id="speed"><b>0</b><span>km/h</span></div>
-      <button id="sim-speed" class="btn" hidden>×1</button>
       <button id="mute" class="icon-btn" aria-label="Couper la voix" title="Voix">🔊</button>
       <button id="stop" class="btn btn-danger">Arrêter</button>
     </div>
