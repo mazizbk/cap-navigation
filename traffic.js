@@ -109,16 +109,20 @@ function placeTomTom(R, incidents, d0, d1) {
       if (a.dist > 40 || b.dist > 40 || b.along - a.along < 20) continue; // autre route, ou sens opposé
       const mid = Geo.snap(coords, cum, g.coordinates[g.coordinates.length >> 1]);
       if (mid.dist > 80) continue; // ne fait que croiser notre trajet aux deux bouts
-      const delay = cat === 8 ? 900 : p.delay || 0; // route fermée : forte pénalité pour chercher un autre trajet
+      const delay = cat === 8 ? 0 : p.delay || 0;
       if (cat === 6 || cat === 8 || delay >= 30) {
         const state = cat === 8 || p.magnitudeOfDelay === 4 ? 6 : p.magnitudeOfDelay >= 3 ? 6 : p.magnitudeOfDelay === 2 ? 5 : 4;
-        jams.push({ from: a.along, to: b.along, state, delay, label: cat === 6 ? (state === 4 ? 'Trafic dense' : 'Bouchon') : name, icon, road });
+        // Route fermée : pas un « retard », mais une forte pénalité pour préférer un autre trajet s'il en existe un.
+        jams.push({ from: a.along, to: b.along, state, delay, closed: cat === 8, penalty: cat === 8 ? 900 : 0,
+          label: cat === 6 ? (state === 4 ? 'Trafic dense' : 'Bouchon') : name, icon, road });
         continue;
       }
-      points.push({ along: a.along, icon, title: name, detail: desc, road, severe: cat === 1 });
+      if (!points.some((q) => q.title === name && Math.abs(q.along - a.along) < 300)) points.push({ along: a.along, icon, title: name, detail: desc, road, severe: cat === 1 });
     } else if (g.type === 'Point') {
       const a = Geo.snap(coords, cum, g.coordinates);
-      if (a.dist <= 25) points.push({ along: a.along, icon, title: name, detail: desc, road, severe: cat === 1 || cat === 8 });
+      if (a.dist <= 25 && !points.some((q) => q.title === name && Math.abs(q.along - a.along) < 300)) {
+        points.push({ along: a.along, icon, title: name, detail: desc, road, severe: cat === 1 || cat === 8 });
+      }
     }
   }
   jams.sort((x, y) => x.from - y.from);
@@ -228,7 +232,8 @@ async function applyTraffic(R, d0, d1) {
     } catch { /* données indisponibles */ }
   }
   R.jamDelay = R.jams.reduce((t, j) => t + j.delay, 0);
-  R.cost = R.duration + R.jamDelay;
+  R.closed = R.jams.filter((j) => j.closed).length;
+  R.cost = R.duration + R.jamDelay + R.jams.reduce((t, j) => t + (j.penalty || 0), 0);
 }
 
 // Calcule les itinéraires possibles et retient le plus rapide compte tenu du trafic connu.
@@ -239,7 +244,7 @@ async function bestRoute(from, to, near) {
   await applyTraffic(routes[0], 0, span(routes[0]));
   // Les variantes ne sont examinées que si l'itinéraire habituel perd au moins 3 minutes.
   for (const R of routes.slice(1)) {
-    if (routes[0].jamDelay >= 180) await applyTraffic(R, 0, span(R));
+    if (routes[0].jamDelay >= 180 || routes[0].closed) await applyTraffic(R, 0, span(R));
     else { R.jams = []; R.points = []; R.jamDelay = 0; R.cost = R.duration; }
   }
   // Une variante n'est retenue que si elle fait gagner au moins une minute.
@@ -285,9 +290,11 @@ function trafficSummary() {
     return inNantes(R) ? 'Bouchons de Nantes : données indisponibles pour le moment' : '';
   }
   const where = R.trafficSource === 'TomTom' ? '' : ' à Nantes';
-  let text = R.jams.length
-    ? '🚗 ' + R.jams.length + (R.jams.length > 1 ? ' ralentissements' : ' ralentissement') + where + ' · +' + Math.max(1, Math.round(R.jamDelay / 60)) + ' min'
+  const slow = R.jams.filter((j) => !j.closed).length;
+  let text = slow
+    ? '🚗 ' + slow + (slow > 1 ? ' ralentissements' : ' ralentissement') + where + ' · +' + Math.max(1, Math.round(R.jamDelay / 60)) + ' min'
     : 'Trafic fluide sur votre trajet' + (where ? ' dans Nantes' : '');
+  if (R.closed) text = '⛔ Route signalée fermée sur le trajet · ' + text;
   if (R.saved >= 60) text += ' · trajet le plus rapide retenu (' + Math.round(R.saved / 60) + ' min de gagnées)';
   return text + ' · source ' + R.trafficSource;
 }

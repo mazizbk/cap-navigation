@@ -46,6 +46,7 @@
         <a id="summary-sv" class="btn" target="_blank" rel="noopener">Voir l'arrivée</a>
       </div>
       <label id="car-option"><input type="checkbox" id="car-screen"> Afficher les consignes sur l'écran de la voiture (Bluetooth, expérimental)</label>
+      <button type="button" id="resume-nav" class="btn btn-primary" hidden>Reprendre le guidage</button>
       <div class="row">
         <button id="start-nav" class="btn btn-primary">Démarrer</button>
         <button id="start-sim" class="btn">Simuler</button>
@@ -63,6 +64,7 @@
         <button type="button" id="gkey-save" class="btn">Enregistrer</button>
       </div>
       <p id="gkey-state"></p>
+      <label class="option"><input type="checkbox" id="gsv-toggle"> Afficher un aperçu photo du prochain carrefour pendant le guidage</label>
     </details>
     <details id="diag-box">
       <summary>Diagnostic</summary>
@@ -105,9 +107,12 @@
       <div id="then" class="panel" hidden></div>
       <!-- Google Street View du prochain carrefour (avec une clé Google). Non cliquable : on ne manipule rien en roulant. -->
       <div id="gsv" class="panel" hidden>
-        <iframe id="gsv-frame" class="on" title="Google Street View devant vous" referrerpolicy="no-referrer-when-downgrade"></iframe>
-        <iframe id="gsv-frame-b" title="Google Street View devant vous" referrerpolicy="no-referrer-when-downgrade"></iframe>
-        <div id="gsv-cap"></div>
+        <iframe id="gsv-frame" title="Aperçu Google Street View du prochain carrefour" referrerpolicy="no-referrer-when-downgrade"></iframe>
+        <div id="gsv-label">
+          <span id="gsv-icon"></span>
+          <span id="gsv-lines"><small><span id="gsv-what"></span> · <b id="gsv-dist"></b></small><span id="gsv-text"></span></span>
+        </div>
+      </div>
       </div>
       <!-- Vraie photo de la route, dans le sens de la marche. Toucher pour agrandir. -->
       <div id="street" class="panel" hidden>

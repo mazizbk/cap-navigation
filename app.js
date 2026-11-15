@@ -39,6 +39,7 @@ const S = {
   photo: null, photoShown: false,
   hazards: [], hazardDone: {}, hazardMarkers: [], overAt: 0, // alertes sur le trajet (voir hazards.js)
   carScreen: readStore('carScreen') === '1',
+  gsvOn: readStore('gsvOn') !== '0', // aperçu photo du prochain carrefour pendant le guidage
   streetOn: false, // photos de rue libres (Panoramax) : retirées, trop inégales. Remplacées par Google Street View.
   // Clé Google Maps : celle du fichier config.js (installée par tools/set_key.ps1), sinon celle saisie sur l'appareil.
   gkey: (window.CAP_CONFIG && window.CAP_CONFIG.googleKey) || readStore('gkey'),
@@ -563,6 +564,8 @@ async function planRoute() {
     setStatus('');
     loadPhoto(to); // en arrière-plan, pour l'afficher à l'approche
     loadHazards(); // idem : alertes trafic et zones de danger
+    $('resume-nav').hidden = true;
+    saveTrip(false);
   } catch (e) {
     setStatus(e.message || 'Erreur réseau.', true);
   }
@@ -845,6 +848,7 @@ async function startNav(sim) {
   simShow();
   $('stop').textContent = 'Arrêter';
   document.body.classList.add('navigating');
+  saveTrip(true);
   setDriveStyle(true);
   startMarker.remove();
   vehicle.setLngLat(S.pos).setRotation(S.bearing).addTo(map);
@@ -1194,6 +1198,7 @@ function arrive() {
   $('alert').hidden = true;
   document.body.classList.remove('has-alert');
   carShow('Vous êtes arrivé', S.to?.label || '');
+  saveTrip(false);
   showPhoto();
 }
 
@@ -1208,7 +1213,6 @@ function stopNav() {
   vehicle.remove();
   gsvReset();
   $('gsv-frame').src = 'about:blank';
-  $('gsv-frame-b').src = 'about:blank';
   carStop();
   streetReset();
   $('alert').hidden = true;
@@ -1217,6 +1221,7 @@ function stopNav() {
   S.manKey = '';
   setNavNote('');
   document.body.classList.remove('navigating');
+  saveTrip(false);
   setDriveStyle(false);
   $('nav').hidden = true;
   $('planner').hidden = false;
@@ -1407,67 +1412,52 @@ function buildRecon() {
 $('recon-btn').addEventListener('click', () => { buildRecon(); $('recon').hidden = false; });
 $('recon-close').addEventListener('click', () => { $('recon').hidden = true; });
 
-// Pendant le guidage, avec la clé : la vue Google de ce que le conducteur a devant lui, au moment où il y est.
-// À l'approche d'une manœuvre, trois vues se succèdent, chacune prise à l'endroit exact où se trouve la voiture
-// quand elle s'affiche (220, 120 puis 50 m avant un carrefour ; 600, 350 puis 150 m avant une sortie de voie rapide).
-// La vue suivante est chargée à l'avance dans un cadre caché, pour apparaître sans attente.
-const gsv = { step: -1, stage: -1, front: 'a', ready: -1, loading: -1 };
-const gsvStages = (step) => (/ramp|fork|merge/.test(step.type) ? [600, 350, 150] : [220, 120, 50]);
-const gsvFrame = (which) => $(which === 'a' ? 'gsv-frame' : 'gsv-frame-b');
+// Pendant le guidage, avec la clé : un APERÇU du prochain carrefour.
+// Une photo ne peut pas suivre une voiture qui roule (elle met une à trois secondes à se charger, et Google
+// prend la photo la plus proche du point demandé, pas ce point exact). On n'essaie donc pas de montrer
+// « ce que vous voyez maintenant » : on montre une seule image fixe de l'endroit où il faudra tourner,
+// présentée comme telle, avec la flèche à suivre et la distance qui décompte. Elle ne change pas en route.
+const gsv = { step: -1, requested: false, loaded: false };
 
 function gsvReset() {
-  gsv.step = -1; gsv.stage = -1; gsv.ready = -1; gsv.loading = -1;
+  gsv.step = -1; gsv.requested = false; gsv.loaded = false;
   $('gsv').hidden = true;
 }
 
-// Charge la vue de l'étape `k` dans le cadre caché ; `gsv.ready` passe à k quand elle est prête.
-function gsvPreload(next, k) {
-  const stages = gsvStages(next);
-  if (k >= stages.length || gsv.loading === k || gsv.ready === k) return;
-  gsv.loading = k;
-  const back = gsvFrame(gsv.front === 'a' ? 'b' : 'a');
-  const step = gsv.step;
-  back.onload = () => { if (gsv.step === step && gsv.loading === k) { gsv.ready = k; gsv.loading = -1; } };
-  // Le point de vue n'est jamais derrière la voiture : si la manœuvre est plus proche que prévu
-  // (deux virages rapprochés), on prend l'endroit où l'on sera dans deux secondes.
-  const viewpoint = Math.max(S.d + S.speed * 2, next.start - stages[k]);
-  if (viewpoint > next.start - 20) { gsv.loading = -1; return; } // trop près pour qu'une photo soit utile
-  back.src = streetViewEmbedUrl(viewpoint);
-}
-
 function updateGoogleView(i, next, toMan) {
-  const ok = !!S.gkey && next && isDecision(next) && next.type !== 'arrive' && !S.route.steps[i].roundabout;
+  const ok = !!S.gkey && S.gsvOn && next && isDecision(next) && next.type !== 'arrive' && !S.route.steps[i].roundabout;
   if (!ok) { if (gsv.step !== -1) gsvReset(); return; }
   if (gsv.step !== i + 1) { gsvReset(); gsv.step = i + 1; }
-  const stages = gsvStages(next);
-  const lead = Math.max(120, S.speed * (S.sim ? S.simMult : 1) * 6); // avance prise pour charger la vue (6 s de route)
 
-  // Étape dans laquelle on se trouve : la dernière dont on a déjà atteint le point de vue.
-  let now = -1;
-  for (let k = 0; k < stages.length; k++) if (toMan <= stages[k]) now = k;
-  if (toMan < 15) { $('gsv').hidden = true; return; } // on y est : les yeux sur la route
+  const fast = /ramp|fork|merge/.test(next.type);
+  const shownFrom = fast ? 800 : 300;                                             // distance à laquelle l'aperçu apparaît
+  const lead = Math.max(150, S.speed * (S.sim ? S.simMult : 1) * 8);              // avance pour le charger (8 s de route)
+  if (toMan < 30) { $('gsv').hidden = true; return; }                             // on y est : les yeux sur la route
+  if (toMan > shownFrom + lead) return;
 
-  // Une seule vue est préparée à la fois, pour ne pas s'interrompre soi-même :
-  //  - si on a atteint un point de vue pas encore affiché, c'est lui qu'on charge (ou qu'on affiche s'il est prêt) ;
-  //  - sinon on prépare le point de vue suivant dès qu'il approche.
-  const upcoming = now + 1;
-  if (now > gsv.stage) {
-    if (gsv.ready !== now) gsvPreload(next, now);
-  } else if (upcoming < stages.length && toMan <= stages[upcoming] + lead) {
-    gsvPreload(next, upcoming);
+  if (!gsv.requested) {
+    gsv.requested = true;
+    const step = gsv.step;
+    const frame = $('gsv-frame');
+    frame.onload = () => { if (gsv.step === step) gsv.loaded = true; };
+    // Point de vue : juste avant la manœuvre, jamais derrière la voiture.
+    frame.src = streetViewEmbedUrl(Math.max(S.d + 10, viewpointOf(next)));
+    setHtml('gsv-icon', stepIcon(next, 52));
+    setHtml('gsv-what', fast ? 'Aperçu de la sortie' : next.roundabout ? 'Aperçu du rond-point' : 'Aperçu du carrefour');
+    setHtml('gsv-text', escapeHtml(next.act + (next.road && next.act !== next.text ? ' · ' + next.road : '')));
   }
-
-  if (now > gsv.stage && gsv.ready === now) {
-    // On arrive au point de vue et l'image est prête : on l'affiche.
-    gsvFrame(gsv.front).classList.remove('on');
-    gsv.front = gsv.front === 'a' ? 'b' : 'a';
-    gsvFrame(gsv.front).classList.add('on');
-    gsv.stage = now;
-    gsv.ready = -1;
+  if (gsv.loaded && toMan <= shownFrom) {
+    setHtml('gsv-dist', 'dans ' + fmtDist(toMan));
     $('gsv').hidden = false;
-    $('gsv-cap').textContent = 'Devant vous';
   }
 }
+
+$('gsv-toggle').checked = S.gsvOn;
+$('gsv-toggle').addEventListener('change', (e) => {
+  S.gsvOn = e.target.checked;
+  try { localStorage.setItem('gsvOn', S.gsvOn ? '1' : '0'); } catch { /* stockage indisponible */ }
+  if (!S.gsvOn) gsvReset();
+});
 
 // Réglage de la clé Google Maps.
 $('gkey').value = S.gkey;
@@ -1533,6 +1523,37 @@ $('diag-btn').addEventListener('click', () => {
 $('diag-copy').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText(diagReport()); $('diag-copy').textContent = 'Copié'; } catch { $('diag-copy').textContent = 'Copie impossible : sélectionnez le texte'; }
 });
+
+// ---------------------------------------------------------------- reprise après rechargement
+// Si la page est rechargée (ou l'application fermée puis rouverte), on ne perd pas le trajet :
+// départ, arrivée et « guidage en cours » sont gardés sur l'appareil pendant 12 heures.
+function saveTrip(navigating) {
+  try {
+    if (!S.to) { localStorage.removeItem('trip'); return; }
+    localStorage.setItem('trip', JSON.stringify({
+      at: Date.now(), to: S.to, from: S.from && !S.from.gps ? S.from : null, // départ « ma position » : on relocalisera
+      navigating: !!navigating, sim: !!S.sim,
+    }));
+  } catch { /* stockage indisponible */ }
+}
+
+async function restoreTrip() {
+  let trip = null;
+  try { trip = JSON.parse(localStorage.getItem('trip') || 'null'); } catch { /* rien à reprendre */ }
+  if (!trip || !trip.to || Date.now() - trip.at > 12 * 3600 * 1000) return;
+  S.to = trip.to;
+  $('to').value = trip.to.label;
+  if (trip.from) { S.from = trip.from; $('from').value = trip.from.label; }
+  await planRoute();
+  if (trip.navigating && S.route) {
+    // Le guidage était en cours : un seul appui pour repartir (la voix exige un geste de l'utilisateur).
+    S.resumeSim = trip.sim;
+    $('resume-nav').hidden = false;
+    saveTrip(true);
+  }
+}
+$('resume-nav').addEventListener('click', () => { $('resume-nav').hidden = true; startNav(!!S.resumeSim); });
+window.addEventListener('load', restoreTrip);
 
 // ---------------------------------------------------------------- application installable
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

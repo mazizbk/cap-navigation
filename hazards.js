@@ -107,13 +107,15 @@ async function loadHazards() {
       icon: j.icon || '🚗', severe: j.state === 6,
       title: (j.label || (j.state === 6 ? 'Route bloquée' : j.state === 5 ? 'Bouchon' : 'Trafic dense')) + ' sur ' + fmtDist(len),
       say: lowerFirst(j.label || (j.state === 6 ? 'route bloquée' : j.state === 5 ? 'bouchon' : 'trafic dense')) + ' sur ' + fmtDistSpoken(len) +
-        (min >= 1 ? ', environ ' + min + (min > 1 ? ' minutes' : ' minute') + ' de retard' : ''),
-      place: min >= 1 ? '+' + min + ' min' : '',
+        (j.closed ? '. Suivez la déviation sur place' : min >= 1 ? ', environ ' + min + (min > 1 ? ' minutes' : ' minute') + ' de retard' : ''),
+      place: j.closed ? 'suivez la déviation' : min >= 1 ? '+' + min + ' min' : '',
     });
   }
 
   // Alertes ponctuelles du trafic en direct (accident, véhicule en panne, travaux… voir traffic.js).
   for (const p of R.points || []) {
+    // Le même événement peut venir de deux sources (Bison Futé et TomTom) : on ne l'annonce qu'une fois.
+    if (list.some((h) => h.type === 'incident' && h.icon === p.icon && Math.abs(h.along - p.along) < 500)) continue;
     const at = Geo.pointAt(R.coords, R.cum, p.along);
     list.push({
       id: 't' + Math.round(p.along) + p.title, type: 'incident', along: p.along, lon: at[0], lat: at[1],
