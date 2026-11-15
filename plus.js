@@ -85,6 +85,7 @@ const Plus = (() => {
     setTimeout(() => window.open(carUrl(c), '_blank'), 1800);
   }
   function renderCarChip() {
+    renderHabitChip();
     const box = $('shortcuts');
     if (!box) return;
     box.querySelector('.chip-car')?.remove();
@@ -135,15 +136,119 @@ const Plus = (() => {
     return rainText;
   }
 
-  // Au départ : la pluie est dite après le briefing, seulement si elle est probable.
+  // ---------- 5. rendez-vous : à l'heure ou en retard
+  // S.meeting est posé quand on part vers un rendez-vous de l'agenda ; sinon on cherche un rendez-vous
+  // d'aujourd'hui dont le lieu ressemble à la destination.
+  const words = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').split(/[^a-z0-9]+/).filter((w) => w.length > 3);
+  async function findMeeting() {
+    if (S.meeting && new Date(S.meeting.debut) > Date.now()) return S.meeting;
+    try {
+      if (typeof GAccount === 'undefined' || !GAccount.connected() || !S.to) return null;
+      const dest = new Set(words(S.to.label));
+      const now = Date.now();
+      return (await GAccount.agenda(1)).find((e) => {
+        const t = new Date(e.debut).getTime();
+        return e.lieu && /T/.test(e.debut) && t > now && t - now < 8 * 3600e3 && words(e.lieu).filter((w) => dest.has(w)).length >= 2;
+      }) || null;
+    } catch { return null; }
+  }
+  let meeting = null;
+  let lateSaid = 0;
+  const hhmm = (d) => d.getHours() + ' heures' + (d.getMinutes() ? ' ' + String(d.getMinutes()).padStart(2, '0') : '');
+  function meetingLine(etaMs) {
+    const start = new Date(meeting.debut);
+    const diff = Math.round((start - etaMs) / 60000);
+    if (diff >= 2) return 'Vous serez en avance de ' + diff + ' minutes pour « ' + meeting.titre + ' ».';
+    if (diff >= -1) return 'Vous arriverez juste à l\'heure pour « ' + meeting.titre + ' », à ' + hhmm(start) + '.';
+    return 'Attention, environ ' + -diff + ' minutes de retard pour « ' + meeting.titre + ' ».';
+  }
+  // Pendant le trajet : si le trafic fait passer en retard, on le dit une fois (puis à nouveau seulement si ça empire de 10 min).
+  function meetingTick() {
+    if (!meeting || S.mode !== 'nav' || !S.etaMs) return;
+    const late = Math.round((S.etaMs - new Date(meeting.debut)) / 60000);
+    if (late >= 3 && late >= lateSaid + 10 && !voiceBusy() && Copilot && (performance.now() - (S.meetingSaidAt || 0) > 60000)) {
+      lateSaid = late;
+      S.meetingSaidAt = performance.now();
+      speak('Avec la circulation, environ ' + late + ' minutes de retard pour votre rendez-vous.');
+    }
+  }
+
+  // ---------- 6. habitudes : les trajets du même moment de la semaine
+  const readLog = () => { try { return JSON.parse(localStorage.getItem('tripLog') || '[]'); } catch { return []; } };
+  function logTrip() {
+    const d = S.finalDest || S.to;
+    if (!d || S.sim) return;
+    const now = new Date();
+    const log = readLog().filter((t) => Date.now() - t.t < 90 * 864e5);
+    log.push({ label: d.label, lon: d.lon, lat: d.lat, t: now.getTime(), wd: now.getDay() % 6 !== 0 ? 1 : 0, h: now.getHours() + now.getMinutes() / 60 });
+    try { localStorage.setItem('tripLog', JSON.stringify(log.slice(-300))); } catch { /* stockage plein */ }
+  }
+  // Destination habituelle à cette heure-ci (au moins 3 fois, et la plupart du temps), ou null.
+  function habit() {
+    const now = new Date();
+    const wd = now.getDay() % 6 !== 0 ? 1 : 0;
+    const h = now.getHours() + now.getMinutes() / 60;
+    const same = readLog().filter((t) => t.wd === wd && Math.abs(t.h - h) <= 1.5);
+    if (same.length < 3) return null;
+    const groups = [];
+    for (const t of same) {
+      const g = groups.find((x) => Geo.distance([x.lon, x.lat], [t.lon, t.lat]) < 150);
+      if (g) g.n++; else groups.push({ ...t, n: 1 });
+    }
+    groups.sort((a, b) => b.n - a.n);
+    const best = groups[0];
+    if (best.n < 3 || best.n < same.length * 0.5) return null;
+    if (S.pos && Geo.distance(S.pos, [best.lon, best.lat]) < 500) return null;   // on y est déjà
+    const p = Places.read();
+    const near = (x) => x && Geo.distance([x.lon, x.lat], [best.lon, best.lat]) < 150;
+    const name = near(p.home) ? 'à la maison' : near(p.work) ? 'au travail' : 'à ' + best.label.split(',')[0];
+    return { place: { label: best.label, lon: best.lon, lat: best.lat }, name };
+  }
+  // Oui à « comme d'habitude ? » : on calcule et on part.
+  async function goHabit(h) {
+    S.to = { ...h.place, full: h.place.label };
+    $('to').value = h.place.label;
+    await planRoute();
+    if (S.route) startNav(false);
+  }
+  function renderHabitChip() {
+    const box = $('shortcuts');
+    if (!box) return;
+    box.querySelector('.chip-habit')?.remove();
+    const h = habit();
+    if (!h) return;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip chip-habit';
+    b.textContent = '⭐ ' + h.name.replace(/^(à la |au |à )/, '').replace(/^./, (c) => c.toUpperCase());
+    b.addEventListener('click', () => goTo(h.place));
+    box.prepend(b);
+    box.hidden = false;
+  }
+
+  // Au départ : rendez-vous, puis pluie, chacun seulement s'il y a quelque chose d'utile à dire.
   async function onStart() {
     const R = S.route;
-    const t = await rainAtArrival(R);
-    if (!t || S.route !== R) return;
-    setTimeout(() => { if (S.mode === 'nav' && !voiceBusy()) speak(t); }, 9000);
+    logTrip();
+    meeting = null; lateSaid = 0; S.etaMs = 0;
+    const [t, ev] = await Promise.all([rainAtArrival(R), findMeeting()]);
+    S.meeting = null;                         // utilisé pour ce trajet seulement
+    if (S.route !== R) return;
+    meeting = ev;
+    if (meeting) { const late = Math.round(((S.etaMs || Date.now() + R.duration * 1000) - new Date(meeting.debut)) / 60000); lateSaid = late >= 3 ? late : 0; }
+    const text = [meeting ? meetingLine(S.etaMs || Date.now() + R.duration * 1000) : '', t].filter(Boolean).join(' ');
+    if (!text) return;
+    setTimeout(() => { if (S.mode === 'nav' && !voiceBusy()) speak(text); }, 9000);
+  }
+
+  let last = 0;
+  function tick() {
+    curveTick();
+    const now = performance.now();
+    if (now - last > 5000) { last = now; meetingTick(); }
   }
 
   $('eta')?.addEventListener('click', shareEta);
   renderCarChip();
-  return { tick: curveTick, findCurves, rememberCar, findCar, renderCarChip, shareEta, rainAtArrival, onStart };
+  return { tick, findCurves, rememberCar, findCar, renderCarChip, renderHabitChip, shareEta, rainAtArrival, onStart, habit, goHabit, findMeeting };
 })();

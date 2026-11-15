@@ -1374,6 +1374,7 @@ function updateUi(i, next, toMan) {
   }
   left += jamDelayAhead(); // retard des bouchons connus encore devant nous
   const eta = new Date(Date.now() + left * 1000);
+  S.etaMs = eta.getTime();
   setHtml('eta', String(eta.getHours()).padStart(2, '0') + ':' + String(eta.getMinutes()).padStart(2, '0'));
   setHtml('remaining', fmtDuration(left) + ' · ' + fmtDist(R.total - S.d));
   setHtml('speed', '<b>' + Math.round(S.speed * 3.6) + '</b><span>km/h</span>');

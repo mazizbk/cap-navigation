@@ -219,6 +219,7 @@ const Voice = (() => {
       if (!ev) { speak('Aucun rendez-vous avec une adresse dans les 7 prochains jours.'); return; }
       const d = new Date(ev.debut);
       speak(ev.titre + ', ' + d.toLocaleDateString('fr-FR', { weekday: 'long' }) + ' à ' + d.getHours() + ' heures ' + (d.getMinutes() || '') + '.', true);
+      S.meeting = ev;
       await Sug.open(ev.lieu, [], true, heard);
       return;
     }

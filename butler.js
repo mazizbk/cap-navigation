@@ -55,7 +55,15 @@ const Butler = (() => {
     if (ev) {
       const d = new Date(ev.debut);
       speak(first + ' Vous avez « ' + ev.titre + ' » à ' + d.getHours() + ' heures' + (d.getMinutes() ? ' ' + d.getMinutes() : '') + '. Souhaitez-vous que nous y allions ?', true);
-      Voice.setPending(() => Sug.open(ev.lieu, [], true, ''));
+      Voice.setPending(() => { S.meeting = ev; return Sug.open(ev.lieu, [], true, ''); });
+      Voice.askAgain();
+      return;
+    }
+    // 3. Un trajet habituel à cette heure-ci : on le propose (un « oui » suffit pour partir).
+    const hab = typeof Plus !== 'undefined' ? Plus.habit() : null;
+    if (hab) {
+      speak(first + ' On va ' + hab.name + ', comme d\'habitude ?', true);
+      Voice.setPending(() => Plus.goHabit(hab));
       Voice.askAgain();
       return;
     }
