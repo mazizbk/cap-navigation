@@ -707,8 +707,8 @@ function speak(text, urgent) {
   try {
     if (urgent) speechSynthesis.cancel(); // une consigne immédiate passe devant
     // Une consigne de direction n'est jamais abandonnée : elle attend son tour.
-    // Seule exception : la simulation accélérée, où les annonces s'empileraient.
-    else if (speechSynthesis.pending && S.sim && S.simMult > 2) return;
+    // Seule exception : la simulation à grande vitesse, où les annonces s'empileraient.
+    else if (speechSynthesis.pending && S.sim && S.speed > 30) return;
     const u = new SpeechSynthesisUtterance(text);
     u.lang = 'fr-FR';
     u.rate = 1.05;
@@ -828,6 +828,8 @@ async function startNav(sim) {
   $('arrival').hidden = true;
   $('sim-ctl').hidden = !sim;
   S.simPaused = false;
+  S.simMult = 1;
+  S.simKmh = S.simKmh || 0;
   simShow();
   $('stop').textContent = 'Arrêter';
   document.body.classList.add('navigating');
@@ -953,6 +955,7 @@ function frame(t) {
     let target = st.duration > 0 ? st.distance / st.duration : 8;
     target = clamp(target, 4, 38);
     if (toMan < 45) target = Math.min(target, 5 + toMan * 0.2); // on ralentit avant de tourner
+    if (S.simKmh) target = S.simKmh / 3.6; // vitesse imposée par l'utilisateur
     S.speed += (target - S.speed) * Math.min(1, dt * 1.2);
     if (S.simPaused) S.speed = 0; // en pause : on reste sur place, l'affichage continue
     else S.d = Math.min(R.total, S.d + S.speed * dt * S.simMult);
@@ -1235,22 +1238,24 @@ $('mute').addEventListener('click', () => {
   $('mute').textContent = S.muted ? '🔇' : '🔊';
   if (S.muted) try { speechSynthesis.cancel(); } catch { /* rien */ }
 });
-// Simulation : l'utilisateur règle lui-même la vitesse de défilement, et peut mettre en pause.
-const SIM_LEVELS = [0.5, 1, 2, 3, 5, 10, 20];
+// Simulation : l'utilisateur choisit lui-même la vitesse du véhicule, en km/h, et peut mettre en pause.
+// « Auto » (0) = la vitesse normale de chaque route, avec ralentissement avant les virages.
 function simShow() {
-  $('sim-x').textContent = '×' + String(S.simMult).replace('.', ',');
+  $('sim-x').textContent = S.simKmh ? S.simKmh + ' km/h' : 'Auto';
   $('sim-pause').textContent = S.simPaused ? '▶' : '⏸';
-  $('sim-minus').disabled = S.simMult <= SIM_LEVELS[0];
-  $('sim-plus').disabled = S.simMult >= SIM_LEVELS[SIM_LEVELS.length - 1];
+  $('sim-minus').disabled = !S.simKmh;
+  $('sim-plus').disabled = S.simKmh >= 200;
 }
 function simStep(dir) {
-  let i = SIM_LEVELS.indexOf(S.simMult);
-  if (i < 0) i = 1;
-  S.simMult = SIM_LEVELS[clamp(i + dir, 0, SIM_LEVELS.length - 1)];
+  // Depuis « Auto », on part de la vitesse actuelle arrondie à la dizaine.
+  const base = S.simKmh || Math.round((S.speed * 3.6) / 10) * 10;
+  const next = base + dir * 10;
+  S.simKmh = !S.simKmh && dir < 0 ? 0 : next < 10 ? 0 : Math.min(200, next);
   simShow();
 }
 $('sim-minus').addEventListener('click', () => simStep(-1));
 $('sim-plus').addEventListener('click', () => simStep(1));
+$('sim-x').addEventListener('click', () => { S.simKmh = 0; simShow(); }); // toucher la vitesse = retour en Auto
 $('sim-pause').addEventListener('click', () => { S.simPaused = !S.simPaused; simShow(); });
 // Quand on revient sur l'application, le verrou d'écran doit être redemandé.
 document.addEventListener('visibilitychange', async () => {
