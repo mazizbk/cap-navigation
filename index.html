@@ -41,6 +41,21 @@
       <button type="button" id="gacc-btn" class="btn">Connecter mon compte Google</button>
       <p id="gacc-state"></p>
     </details>
+    <details id="butler-settings">
+      <summary>Majordome</summary>
+      <p>En montant dans la voiture, Cap vous salue, prend de vos nouvelles et vous demande où aller. Il s'ouvre tout seul grâce à un raccourci iPhone (voir les étapes ci-dessous).</p>
+      <label class="option"><input type="checkbox" id="butler-on" checked> Majordome activé</label>
+      <label class="field-label">Comment dois-je vous appeler ?</label>
+      <input id="butler-title" type="text" autocomplete="off" placeholder="monsieur">
+      <button type="button" id="butler-test" class="btn">Essayer maintenant</button>
+      <ol class="steps">
+        <li>Ouvrez l'application <b>Raccourcis</b> › onglet <b>Automatisation</b> › <b>+</b>.</li>
+        <li>Choisissez <b>Bluetooth</b>, puis l'appareil de l'Audi, et « Est connecté ».</li>
+        <li>Cochez <b>Exécuter immédiatement</b> (sans confirmation).</li>
+        <li>Action : <b>Ouvrir les URL</b>, avec l'adresse <b>capnav://majordome</b>.</li>
+        <li>Touchez <b>OK</b>. À la prochaine montée en voiture, Cap vous accueille.</li>
+      </ol>
+    </details>
     <details id="theme-settings">
       <summary>Affichage jour / nuit</summary>
       <p>En automatique, la carte s'assombrit du coucher au lever du soleil pour ne pas vous éblouir.</p>
@@ -259,5 +274,6 @@
   <script src="google.js"></script>
   <script src="ai.js"></script>
   <script src="voice.js"></script>
+  <script src="butler.js"></script>
 </body>
 </html>

@@ -805,7 +805,8 @@ function sayable(text) {
   t = t.replace(/\b(sur|vers) A ?(\d+)/g, '$1 l\'A $2').replace(/\b(sur|vers) ([DNMCE]) ?(\d+)/g, '$1 la $2 $3');
   t = t.replace(/\bDr\.? /g, 'Docteur ').replace(/\bSt\.? /g, 'Saint ').replace(/\bSte\.? /g, 'Sainte ').replace(/\bGal\.? /g, 'Général ')
     .replace(/\bMal\.? /g, 'Maréchal ').replace(/\bAv\.? /g, 'Avenue ').replace(/\bBd\.? /g, 'Boulevard ').replace(/\bPdt\.? /g, 'Président ');
-  t = t.trim().replace(/\.+$/, '') + '.';
+  t = t.trim().replace(/\.+$/, '');
+  if (!/[?!]$/.test(t)) t += '.'; // pas de point après une question
   return t.replace(/\.\s*\./g, '.');
 }
 

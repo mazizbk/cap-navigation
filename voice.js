@@ -14,6 +14,7 @@ const Voice = (() => {
   const available = !!plugin || (!!WebRec && !standalone);
   let listening = false;
   let pending = null;      // action proposée, en attente d'un « oui »
+  let nextHandler = null;  // la prochaine réponse va à ce traitement (dialogue du majordome)
   let expectReply = false; // la dernière réponse de l'application attend une suite : on réécoutera sans appui
 
   function hud(text, hold) {
@@ -75,7 +76,7 @@ const Voice = (() => {
     hud('« ' + heard + ' »');
     diag('commande vocale : ' + heard);
     expectReply = false;
-    try { await run(heard); } catch (e) { speak('Je n\'ai pas pu le faire.'); diag('commande vocale en échec : ' + e.message); }
+    try { if (nextHandler) { const f = nextHandler; nextHandler = null; await f(heard); } else await run(heard); } catch (e) { speak('Je n\'ai pas pu le faire.'); diag('commande vocale en échec : ' + e.message); }
     // L'application vient de poser une question (« Dites démarrer… ») : on attend la fin de sa phrase, puis on réécoute.
     if (expectReply && depth < 3 && !S.muted) {
       expectReply = false;
@@ -127,6 +128,8 @@ const Voice = (() => {
       domicile_enregistre: !!places.home,
       travail_enregistre: !!places.work,
       voix_coupee: !!S.muted,
+      accueil: !!S.butlerGreeting,
+      titre: (typeof Butler !== 'undefined' ? Butler.title() : 'monsieur'),
       compte_google_connecte: GAccount.connected(),
       contacts_disponibles: GAccount.contactsAvailable(),
       evite_peages: !!S.avoidTolls,
@@ -139,7 +142,8 @@ const Voice = (() => {
     if (typeof Sug !== 'undefined' && Sug.pickFromSpeech(plain(heard))) return;
     // Les ordres courts et sans ambiguïté sont exécutés tout de suite, sans attendre Claude (2 secondes de gagnées).
     const quick = /^(stop|arrete|repete|silence|oui|non|ok|d'accord|demarrer|demarre|domicile|travail|parking|trafic|recentre|station|station la (moins chere|plus proche))$/.test(plain(heard));
-    if (!quick && typeof AI !== 'undefined' && AI.enabled) {
+    const answersProposal = !!pending && /^(oui|non|ok|d'accord|vas y|on y va|allons y|volontiers|avec plaisir|pas la peine|non merci)/.test(plain(heard));
+    if (!quick && !answersProposal && typeof AI !== 'undefined' && AI.enabled) {
       try {
         hud('« ' + heard + ' » … Claude réfléchit', true);
         const r = await AI.converse(heard, appState(), {
@@ -150,6 +154,7 @@ const Voice = (() => {
         if (r.done) { if (r.said && $('sug').hidden) { hud(r.said); speak(r.said); } return; }
         hud(r.said);
         speak(r.said);
+        if (/\?\s*$/.test(r.said)) expectReply = true; // il attend une réponse : on réécoute
         return;
       } catch (e) {
         diag('Claude indisponible : ' + e.message);
@@ -319,12 +324,15 @@ const Voice = (() => {
         speak('Claude est activé.');
         return true;
       }
+      if (u.host === 'majordome' || u.searchParams.has('majordome') || hash.has('majordome')) { if (typeof Butler !== 'undefined') Butler.start(); return true; }
       const said = u.searchParams.get('dire') || u.searchParams.get('q');
       if (said) { hud('« ' + said + ' »'); run(said).catch(() => {}); return true; }
     } catch { /* adresse illisible */ }
     return false;
   };
   if (cap && cap.Plugins && cap.Plugins.App) cap.Plugins.App.addListener('appUrlOpen', (e) => fromUrl(e.url));
+  // Application lancée par le lien lui-même (raccourci iPhone « Ouvrir les URL » alors qu'elle était fermée).
+  if (cap && cap.Plugins && cap.Plugins.App && cap.Plugins.App.getLaunchUrl) cap.Plugins.App.getLaunchUrl().then((r) => { if (r && r.url) fromUrl(r.url); }).catch(() => {});
   window.addEventListener('load', () => { if (!fromUrl(location.href)) openListen(); });
-  return { available, native: !!plugin, listen, run, runRules, askAgain() { expectReply = true; } };
+  return { available, native: !!plugin, listen, run, runRules, askAgain() { expectReply = true; }, setPending(fn) { pending = fn; }, onNextAnswer(fn) { nextHandler = fn; } };
 })();
