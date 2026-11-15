@@ -1,8 +1,13 @@
 'use strict';
-/* Compréhension des commandes vocales par Claude (facultatif).
+/* Assistant vocal Claude (facultatif).
  * Sans clé : rien ne change, voice.js reconnaît des phrases fixes.
- * Avec une clé API Anthropic : on peut parler librement (« j'ai presque plus d'essence », « ramène-moi »,
- * « on arrive quand ? »). Claude traduit la phrase en UNE commande connue de l'application, ou répond en une phrase.
+ * Avec une clé API Anthropic : on parle naturellement. Claude peut
+ *   - piloter l'application (outil « commande ») ;
+ *   - proposer des lieux à choisir (outil « chercher_lieux » -> boîte de suggestions) ;
+ *   - chercher sur internet (adresses, infos, météo…) puis répondre en une ou deux phrases ;
+ *   - se souvenir de la conversation pendant quelques minutes (« et le deuxième, il ferme à quelle heure ? »).
+ * Toute adresse trouvée sur internet passe par la boîte de suggestions (vraie position + choix du conducteur) :
+ * on ne guide jamais vers une adresse écrite par Claude.
  * La clé reste sur l'appareil (stockage local) : elle n'est jamais publiée avec le site.
  */
 const AI = (() => {
@@ -12,44 +17,66 @@ const AI = (() => {
   let client = null;
   let clientKey = '';
 
-  // La clé vient du réglage enregistré sur l'appareil, ou du fichier config.js LOCAL (jamais celui publié en ligne :
-  // une clé Anthropic mise sur un site public serait utilisable par n'importe qui).
+  // La clé vient du réglage enregistré sur l'appareil, ou du fichier config.js LOCAL (jamais celui publié en ligne).
   const key = () => {
     try { const k = localStorage.getItem('anthropicKey'); if (k) return k; } catch { /* stockage indisponible */ }
     return (window.CAP_CONFIG && window.CAP_CONFIG.anthropicKey) || '';
   };
   const setKey = (k) => { try { if (k) localStorage.setItem('anthropicKey', k); else localStorage.removeItem('anthropicKey'); } catch { /* stockage indisponible */ } client = null; };
 
-  const COMMANDS = ['recherche', 'destination', 'domicile', 'travail', 'station_moins_chere', 'station_plus_proche', 'stations', 'arreter', 'silence',
+  const COMMANDS = ['domicile', 'travail', 'station_moins_chere', 'station_plus_proche', 'stations', 'arreter', 'silence',
     'remettre_le_son', 'repeter', 'heure_arrivee', 'trafic', 'eviter_peages', 'autoriser_peages', 'eviter_autoroutes', 'autoriser_autoroutes',
-    'demarrer', 'recentrer', 'changer_vue', 'autre_trajet', 'enregistrer_domicile', 'enregistrer_travail', 'parking', 'oui', 'non', 'trajet_economique', 'cout_trajet', 'aucune'];
+    'demarrer', 'recentrer', 'changer_vue', 'autre_trajet', 'enregistrer_domicile', 'enregistrer_travail', 'parking', 'oui', 'non', 'trajet_economique', 'cout_trajet'];
 
-  const TOOL = {
-    name: 'commande',
-    description: 'Exécute dans l\'application de navigation la commande que le conducteur vient de demander à voix haute.',
-    strict: true,
-    input_schema: {
-      type: 'object',
-      properties: {
-        commande: { type: 'string', enum: COMMANDS, description: 'La commande à exécuter. « aucune » si la phrase n\'en demande pas.' },
-        requetes: { type: 'array', items: { type: 'string' }, description: 'Pour « recherche » : 1 à 3 recherches courtes à lancer (nom exact d\'une enseigne, catégorie de lieu, nom de lieu). Jamais d\'adresse inventée. Liste vide sinon.' },
-        lieu: { type: 'string', description: 'Pour « destination » : l\'adresse ou le lieu, tel qu\'on le taperait dans une recherche (ex. « gare de Nantes »). Vide sinon.' },
-        reponse: { type: 'string', description: 'Pour « aucune » : une réponse d\'une seule phrase courte, dite à voix haute au conducteur. Vide sinon.' },
+  const TOOLS = [
+    {
+      name: 'commande',
+      description: 'Exécute une action de l\'application de navigation. ' +
+        'domicile/travail : y aller. stations : stations SP95 proches (station_moins_chere / station_plus_proche si le critère est dit). ' +
+        'arreter : arrête le guidage. silence / remettre_le_son : voix. repeter : redit la consigne. heure_arrivee, trafic, cout_trajet : informations sur le trajet. ' +
+        'eviter_peages, autoriser_peages, eviter_autoroutes, autoriser_autoroutes : options. demarrer : lance le guidage prêt. recentrer, changer_vue : carte. ' +
+        'autre_trajet, trajet_economique : changer de variante avant le départ. enregistrer_domicile/travail : mémorise la destination affichée. ' +
+        'parking : où se garer près de l\'arrivée. oui / non : réponse à une proposition que l\'application vient de faire.',
+      strict: true,
+      input_schema: {
+        type: 'object',
+        properties: { commande: { type: 'string', enum: COMMANDS } },
+        required: ['commande'],
+        additionalProperties: false,
       },
-      required: ['commande', 'requetes', 'lieu', 'reponse'],
-      additionalProperties: false,
     },
-  };
+    {
+      name: 'chercher_lieux',
+      description: 'Affiche au conducteur une liste de lieux réels à choisir (avec distance, temps et horaires connus), puis il choisit à la voix ou au doigt et l\'itinéraire part. ' +
+        'À utiliser pour toute destination ou tout lieu à trouver. Donne 1 à 3 recherches courtes : nom exact du lieu ou de l\'enseigne avec la ville si connue, ' +
+        'ou une catégorie (« pharmacie », « restaurant italien »). Si tu as trouvé une adresse sur internet, mets le nom du lieu ET l\'adresse complète comme recherches.',
+      strict: true,
+      input_schema: {
+        type: 'object',
+        properties: {
+          requetes: { type: 'array', items: { type: 'string' } },
+          ouvert_maintenant: { type: 'boolean', description: 'true si le conducteur veut un lieu ouvert maintenant.' },
+          autour_de: { type: 'string', description: "Lieu autour duquel chercher, s'il le précise (« près de mon hôtel » -> l'adresse de l'hôtel, « à Nantes » -> « Nantes »). Vide = autour de la voiture." },
+        },
+        required: ['requetes', 'ouvert_maintenant', 'autour_de'],
+        additionalProperties: false,
+      },
+    },
+    { type: 'web_search_20260209', name: 'web_search', max_uses: 2, user_location: { type: 'approximate', country: 'FR', timezone: 'Europe/Paris' } },
+  ];
 
   const SYSTEM = [
-    'Tu es l\'assistant vocal de Cap, une application de navigation en voiture. Le conducteur a un TDAH et conduit : il lui faut des réponses très courtes et sans ambiguïté.',
-    'On te donne une phrase dictée (la reconnaissance vocale peut l\'avoir déformée) et l\'état de l\'application. Appelle toujours l\'outil « commande », une seule fois.',
-    'Choisis la commande qui correspond à ce que le conducteur veut obtenir, même s\'il le dit de façon indirecte : « je n\'ai presque plus d\'essence » veut dire stations ; « ramène-moi » veut dire domicile ; « tais-toi » veut dire silence ; « c\'est quand qu\'on arrive » veut dire heure_arrivee.',
-    '« autre_trajet » passe à la variante d\'itinéraire suivante (avant le départ). « changer_vue » bascule entre plan et photo aérienne. « enregistrer_domicile » / « enregistrer_travail » mémorisent la destination affichée.',
-    '« parking » cherche où se garer près de l\'arrivée (gratuit d\'abord). « oui » / « non » répondent à une proposition que l\'application vient de faire. « trajet_economique » choisit la variante qui consomme le moins ; « cout_trajet » dit le coût en carburant.',
-    '« recherche » : le conducteur cherche un lieu ou un type de lieu (« un McDo » -> ["McDonald\'s"], « j\'ai faim » -> ["restaurant", "boulangerie"], « une pharmacie de garde » -> ["pharmacie"]). « destination » : il donne une adresse ou un lieu précis. Dans les deux cas l\'application lui proposera une liste à choisir. L\'application connaît les horaires de certains lieux et les affiche : si le conducteur dit « ouvert », garde ce mot dans la requête ; toi, n\'affirme jamais qu\'un lieu est ouvert.',
-    'Pour le carburant : « station_moins_chere » ou « station_plus_proche » seulement si le conducteur a précisé ce critère ; sinon « stations », qui lui présente les deux.',
-    'Si la phrase ne demande rien que l\'application sache faire, choisis « aucune » et réponds en une phrase courte, en français, sans liste ni mise en forme, car elle sera lue à voix haute. Si tu ne sais pas, dis-le simplement. Ne donne jamais de conseil qui détourne l\'attention de la route.',
+    'Tu es l\'assistant vocal de Cap, une application de navigation en voiture. Le conducteur a un TDAH et conduit.',
+    'Tu reçois ce qu\'il dit (la dictée peut déformer des mots : devine le sens) et l\'état de l\'application.',
+    'Débrouille-toi pour l\'aider sans lui demander de reformuler : choisis toi-même l\'action la plus utile.',
+    '- Pour piloter l\'application : outil « commande ».',
+    '- Pour aller quelque part ou trouver un lieu : outil « chercher_lieux » (l\'application affiche une liste et lit les choix ; tu n\'as rien à ajouter).',
+    '- Si tu ne connais pas un lieu, une adresse ou une information récente (horaires, événement, météo, prix…), cherche sur internet, puis utilise « chercher_lieux » si c\'est un endroit où aller.',
+    "- Pour une durée ou une distance jusqu'à un lieu, utilise aussi « chercher_lieux » : la liste affiche le temps de route.",
+    '- Sinon, réponds simplement.',
+    'Ta réponse est lue à voix haute pendant la conduite : une ou deux phrases courtes, en français, sans liste, sans titre, sans lien, sans parenthèse de source.',
+    'N\'invente jamais une adresse ni un horaire. Si tu n\'es pas sûr, dis-le en une phrase. Ne donne aucun conseil qui détourne l\'attention de la route.',
+    'Tu n\'as pas accès à ses mails, son agenda ni ses contacts : si on te le demande, dis-le en une phrase.',
   ].join('\n');
 
   async function getClient() {
@@ -57,44 +84,70 @@ const AI = (() => {
     const Anthropic = sdk.default || sdk.Anthropic;
     if (!client || clientKey !== key()) {
       clientKey = key();
-      // Appel direct depuis l'appareil : la clé est celle de l'utilisateur, stockée chez lui.
-      client = new Anthropic({ apiKey: clientKey, dangerouslyAllowBrowser: true, maxRetries: 1, timeout: 15000 });
+      client = new Anthropic({ apiKey: clientKey, dangerouslyAllowBrowser: true, maxRetries: 1, timeout: 25000 });
     }
     return { client, Anthropic };
   }
 
-  // Renvoie { commande, lieu, reponse }, ou lève une erreur (voice.js revient alors aux phrases fixes).
-  async function understand(heard, state) {
+  // Conversation de la session. On ajoute toujours à la fin, sans jamais modifier les tours précédents.
+  let conv = [];
+  let lastAt = 0;
+  let owed = [];   // résultats d'outils à rendre à Claude au début du tour suivant
+
+  // Converse avec Claude. `act` : { commande(nom), lieux(requetes, ouvert) } exécutés par voice.js.
+  // Renvoie { said: texte à dire } ou { done: true } si une action a été lancée. Lève une erreur en cas d'échec.
+  async function converse(heard, state, act) {
     const { client: c, Anthropic } = await getClient();
-    let response;
-    try {
-      response = await c.beta.messages.create({
-        model: MODEL,
-        max_tokens: 2000,
-        betas: ['server-side-fallback-2026-07-01'],
-        fallbacks: 'default',
-        output_config: { effort: 'low' },
-        system: SYSTEM,
-        tools: [TOOL],
-        messages: [{ role: 'user', content: 'État de l\'application : ' + JSON.stringify(state) + '\nPhrase dictée : « ' + heard + ' »' }],
-      });
-    } catch (error) {
-      if (error instanceof Anthropic.AuthenticationError) throw new Error('clé Claude refusée');
-      if (error instanceof Anthropic.RateLimitError) throw new Error('trop de demandes à Claude');
-      if (error instanceof Anthropic.APIError) throw new Error('Claude ' + (error.status || '') + ' ' + error.message);
-      throw error;
+    if (Date.now() - lastAt > 10 * 60000 || conv.length > 16) { conv = []; owed = []; }
+    lastAt = Date.now();
+    const userText = 'État de l\'application : ' + JSON.stringify(state) + '\nLe conducteur dit : « ' + heard + ' »';
+    conv.push({ role: 'user', content: [...owed, { type: 'text', text: userText }] });
+    owed = [];
+    const t0 = Date.now();
+    for (let round = 0; round < 4; round++) {
+      let r;
+      try {
+        r = await c.beta.messages.create({
+          model: MODEL,
+          max_tokens: 4000,
+          betas: ['server-side-fallback-2026-07-01'],
+          fallbacks: 'default',
+          output_config: { effort: 'low' },
+          system: SYSTEM,
+          tools: TOOLS,
+          messages: conv,
+        });
+      } catch (error) {
+        conv = []; owed = [];
+        if (error instanceof Anthropic.AuthenticationError) throw new Error('clé Claude refusée');
+        if (error instanceof Anthropic.RateLimitError) throw new Error('trop de demandes à Claude');
+        if (error instanceof Anthropic.APIError) throw new Error('Claude ' + (error.status || '') + ' ' + error.message);
+        throw error;
+      }
+      conv.push({ role: 'assistant', content: r.content });
+      if (r.stop_reason === 'refusal') { conv = []; throw new Error('demande refusée par Claude'); }
+      if (r.stop_reason === 'pause_turn') { if (Date.now() - t0 > 20000) break; continue; } // recherche internet en cours
+      const uses = r.content.filter((b) => b.type === 'tool_use');
+      const text = r.content.filter((b) => b.type === 'text').map((b) => b.text).join(' ').replace(/\s+/g, ' ').trim();
+      if (!uses.length) return { said: text || 'Je n\'ai pas de réponse.' };
+      // Actions dans l'application : on les lance, et on rendra le résultat à Claude au tour suivant.
+      let did = false;
+      for (const u of uses) {
+        let result = 'fait';
+        try {
+          if (u.name === 'commande' && COMMANDS.includes(u.input.commande)) { await act.commande(u.input.commande); did = true; }
+          else if (u.name === 'chercher_lieux' && (u.input.requetes || []).length) { await act.lieux(u.input.requetes, !!u.input.ouvert_maintenant, u.input.autour_de || ''); did = true; result = 'liste affichée et lue au conducteur'; }
+          else result = 'action inconnue';
+        } catch (e) { result = 'échec : ' + e.message; }
+        owed.push({ type: 'tool_result', tool_use_id: u.id, content: result });
+      }
+      if (did) return { done: true, said: text };
+      return { said: text || 'Je n\'ai pas pu le faire.' };
     }
-    if (response.stop_reason === 'refusal') throw new Error('demande refusée par Claude');
-    for (const block of response.content) {
-      if (block.type === 'tool_use' && block.name === 'commande' && block.input && COMMANDS.includes(block.input.commande)) return block.input;
-    }
-    // Pas d'appel d'outil : on prend le texte comme réponse à dire.
-    const text = response.content.filter((b) => b.type === 'text').map((b) => b.text).join(' ').trim();
-    if (text) return { commande: 'aucune', lieu: '', reponse: text };
-    throw new Error('réponse de Claude vide');
+    return { said: 'Je n\'ai pas trouvé à temps.' };
   }
 
-  // Réglages : la clé se colle une fois, sur l'appareil.
+  // Réglages : la clé se colle une fois, sur l'appareil, ou arrive par le code QR affiché sur le PC.
   const input = $('akey');
   const note = $('akey-note');
   const show = () => { note.textContent = key() ? 'Claude est activé pour les commandes vocales (clé enregistrée sur cet appareil).' : 'Sans clé, les commandes vocales reconnaissent des phrases fixes.'; };
@@ -102,5 +155,5 @@ const AI = (() => {
   $('akey-clear').addEventListener('click', () => { setKey(''); input.value = ''; show(); });
   show();
 
-  return { get enabled() { return !!key(); }, understand, MODEL };
+  return { get enabled() { return !!key(); }, converse, setKey: (k) => { setKey(k); show(); }, MODEL };
 })();

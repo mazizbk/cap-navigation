@@ -114,7 +114,7 @@ const Sug = (() => {
   }
 
   // Ouvre la boîte pour `query`. `extra` : recherches supplémentaires (proposées par Claude). `say` : lire les choix à voix haute.
-  async function open(query, extra = [], say = true, said = '') {
+  async function open(query, extra = [], say = true, said = '', near = '') {
     const my = ++seq;
     // « pharmacie ouverte », « de garde », « maintenant » : on garde l'intention, on retire ces mots de la recherche.
     const OPEN = /\b(ouverte?s?|de garde|maintenant|en ce moment|tout de suite|actuellement)\b/gi;
@@ -128,7 +128,15 @@ const Sug = (() => {
     $('sug-g').hidden = true;
     $('sug-gbtn').textContent = 'Voir sur Google';
     render('Recherche…');
-    const c = here();
+    let c = here();
+    // « près de mon hôtel », « à Nantes » : on centre la recherche sur ce lieu-là, pas sur la voiture.
+    if (near) {
+      try {
+        const g = await photon(near, c);
+        if (g[0]) { c = { lon: g[0].lon, lat: g[0].lat }; $('sug-q').textContent = '« ' + query + ' » près de ' + g[0].name; }
+      } catch { /* on reste autour de la voiture */ }
+      if (my !== seq) return;
+    }
     const queries = [...new Set([query, ...extra].filter(Boolean))].slice(0, 4);
     const lists = await Promise.all(queries.flatMap((q) => [tomtom(q, c).catch(() => []), photon(q, c).catch(() => [])]));
     if (my !== seq) return;
@@ -147,6 +155,14 @@ const Sug = (() => {
       x.rel = words.filter((w) => all.includes(w)).length + words.filter((w) => n.includes(w)).length * 0.5 +
         (queries.some((q) => n.startsWith(norm(q))) ? 2 : 0);
     }
+    // Homonymes lointains (« restaurant italien » à Eymet) : autour d'un lieu précisé, on ne garde que les 40 km.
+    // Sinon, un lieu lointain n'est gardé que s'il correspond nettement mieux que les lieux proches (« tour Eiffel »).
+    const nearOnes = items.filter((x) => x.dist < 40000);
+    if (near && nearOnes.length) items = nearOnes;
+    else if (nearOnes.length >= 2) {
+      const bestNear = Math.max(...nearOnes.map((x) => x.rel));
+      items = items.filter((x) => x.dist < 40000 || x.rel >= bestNear + 1);
+    }
     items.sort((a, b) => b.rel - a.rel || a.dist - b.dist);
     // Un lieu très proche passe devant s'il porte le même nom qu'un lointain.
     await times(c);
@@ -164,7 +180,7 @@ const Sug = (() => {
     if (say) {
       const top = items.slice(0, 3).map((x, k) => {
         const st = openState(x);
-        return ['Un', 'Deux', 'Trois'][k] + ' : ' + x.name + (x.where ? ', ' + x.where.split(', ').pop() : '') + ', ' + fmtDistSpoken(x.road || x.dist) +
+        return ['Un', 'Deux', 'Trois'][k] + ' : ' + x.name + (x.where ? ', ' + x.where.split(', ').pop() : '') + ', ' + (x.time && !near ? 'à ' + fmtDuration(x.time).replace(' h ', ' heure ').replace('min', 'minutes') : fmtDistSpoken(x.road || x.dist)) +
           (st ? ', ' + st.said : wantOpen ? ', horaires inconnus' : '');
       });
       const anyOpen = items.slice(0, 5).some((x) => { const st = openState(x); return st && st.open; });

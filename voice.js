@@ -139,17 +139,18 @@ const Voice = (() => {
     const quick = /^(stop|arrete|repete|silence|oui|non|ok|d'accord|demarrer|demarre|domicile|travail|parking|trafic|recentre|station|station la (moins chere|plus proche))$/.test(plain(heard));
     if (!quick && typeof AI !== 'undefined' && AI.enabled) {
       try {
-        hud('« ' + heard + ' » …', true);
-        const r = await AI.understand(heard, appState());
-        diag('Claude a compris : ' + r.commande + (r.lieu ? ' (' + r.lieu + ')' : ''));
-        if ((r.commande === 'destination' || r.commande === 'recherche') && (r.lieu || (r.requetes || []).length)) {
-          hud('');
-          return Sug.open(r.lieu || r.requetes[0], r.requetes || [], true, heard);
-        }
-        if (r.commande === 'aucune') { const t = r.reponse || 'Je n\'ai pas compris.'; hud(t); speak(t); return; }
-        if (CANON[r.commande]) return runRules(CANON[r.commande]);
+        hud('« ' + heard + ' » … Claude réfléchit', true);
+        const r = await AI.converse(heard, appState(), {
+          commande: (name) => (CANON[name] ? runRules(CANON[name]) : null),
+          lieux: (requetes, ouvert, near) => { hud(''); return Sug.open(requetes[0], requetes.slice(1), true, ouvert ? 'ouvert' : heard, near); },
+        });
+        if (r.done) { if (r.said && $('sug').hidden) { hud(r.said); speak(r.said); } return; }
+        hud(r.said);
+        speak(r.said);
+        return;
       } catch (e) {
         diag('Claude indisponible : ' + e.message);
+        hud('');
       }
     }
     return runRules(heard);
@@ -297,6 +298,15 @@ const Voice = (() => {
   const fromUrl = (url) => {
     try {
       const u = new URL(url);
+      const hash = new URLSearchParams(u.hash.slice(1));
+      const k = u.searchParams.get('anthropic') || hash.get('anthropic');
+      if (k && /^sk-ant-[\w-]{40,}$/.test(k) && typeof AI !== 'undefined') {
+        AI.setKey(k);
+        if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+        hud('Clé Claude enregistrée sur ce téléphone ✓');
+        speak('Claude est activé.');
+        return true;
+      }
       const said = u.searchParams.get('dire') || u.searchParams.get('q');
       if (said) { hud('« ' + said + ' »'); run(said).catch(() => {}); return true; }
     } catch { /* adresse illisible */ }
