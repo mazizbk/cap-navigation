@@ -474,7 +474,7 @@ body.navigating .maplibregl-ctrl-bottom-right { bottom: calc(var(--safe-bottom) 
 #diag { margin: 8px 0 0; padding: 10px; max-height: 38vh; overflow: auto; white-space: pre-wrap; word-break: break-word;
   font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; color: var(--text); background: rgba(0, 0, 0, 0.35); border-radius: 10px;
   user-select: text; -webkit-user-select: text; }
-#planner { max-height: calc(100vh - var(--safe-top) - var(--safe-bottom) - 24px); overflow: auto; }
+#planner { max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 24px); overflow: auto; }
 
 /* ---------- réglage de la vitesse en simulation ---------- */
 #sim-ctl { align-self: flex-end; display: flex; align-items: center; gap: 2px; padding: 4px 6px; border-radius: 999px; }
@@ -599,12 +599,12 @@ body.listening #mic-btn, body.listening #mic-nav { background: var(--accent); co
 #gtts-box input { flex: 1; min-width: 0; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: rgba(255,255,255,0.06); color: var(--text); font: inherit; }
 
 /* ---------- boutons du bas toujours visibles (SP95, micro, Plan) : le panneau s'arrête au-dessus d'eux ---------- */
-#planner { max-height: calc(100vh - var(--safe-top) - var(--safe-bottom) - 96px); }
+#planner { max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 96px); }
 #view-toggle, #fuel-btn, #mic-btn { z-index: 7; }
 #mic-btn { min-width: 56px; min-height: 48px; font-size: 22px; }
 
 /* ---------- suggestions de lieux ---------- */
-#sug { position: fixed; left: 12px; right: 12px; top: calc(var(--safe-top) + 12px); max-height: calc(100vh - var(--safe-top) - var(--safe-bottom) - 110px);
+#sug { position: fixed; left: 12px; right: 12px; top: calc(var(--safe-top) + 12px); max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 110px);
   max-width: 520px; margin: 0 auto; z-index: 22; padding: 14px; overflow: auto; background: rgba(14, 20, 32, 0.97); }
 #sug header { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 18px; }
 #sug-q { color: var(--muted); font-weight: 400; font-size: 15px; }
@@ -631,3 +631,60 @@ body.listening #mic-btn, body.listening #mic-nav { background: var(--accent); co
 #gacc-settings summary { cursor: pointer; color: var(--text); }
 #gacc-settings p { margin: 8px 0; }
 #gacc-btn { width: 100%; }
+
+/* ================= iPhone : finitions de mise en page ================= */
+/* Champs : 16 px minimum, sinon l'iPhone zoome la page quand on touche le champ. */
+.field input, #akey, #gtts-key, #gkey, #voice-select { font-size: 16px; }
+/* Cibles tactiles d'au moins 44 px. */
+#route-opts .option { min-height: 44px; display: inline-flex; align-items: center; gap: 8px; }
+#route-opts .option input, #car-option input { width: 22px; height: 22px; }
+.chip { min-height: 40px; }
+/* Le zoom se fait avec deux doigts : les boutons + / − gênaient le micro. La boussole reste. */
+@media (pointer: coarse) { .maplibregl-ctrl-zoom-in, .maplibregl-ctrl-zoom-out { display: none !important; } }
+.maplibregl-ctrl-bottom-right { bottom: calc(var(--safe-bottom) + 96px); }
+
+/* Boutons du bas : Plan, SP95, Réglages à gauche ; micro à droite. */
+#prefs-btn { position: fixed; left: 186px; bottom: calc(var(--safe-bottom) + 34px); z-index: 7; min-height: 40px; min-width: 48px; padding: 8px 12px; font-size: 18px;
+  background: var(--bg); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+body.navigating #prefs-btn { display: none; }
+
+/* Feuille « Réglages » */
+#prefs { position: fixed; left: 12px; right: 12px; top: calc(var(--safe-top) + 12px); bottom: calc(var(--safe-bottom) + 12px); max-width: 520px; margin: 0 auto;
+  z-index: 25; padding: 14px; overflow: auto; background: rgba(14, 20, 32, 0.98); }
+#prefs header { display: flex; align-items: center; justify-content: space-between; font-size: 20px; margin-bottom: 6px; }
+#prefs details { margin-top: 0; padding: 12px 0; border-top: 1px solid var(--line); font-size: 15px; color: var(--muted); }
+#prefs details summary { cursor: pointer; color: var(--text); font-size: 17px; min-height: 32px; display: flex; align-items: center; }
+#prefs #app-version { text-align: left; margin: 0 0 8px; }
+
+/* ===== Trajet calculé : feuille en bas, carte et tracé visibles au-dessus (comme Google Maps) ===== */
+#trip-head { display: flex; align-items: center; gap: 6px; width: 100%; appearance: none; border: 0; background: rgba(255, 255, 255, 0.06);
+  color: var(--text); font: inherit; font-size: 15px; padding: 10px 12px; border-radius: 12px; cursor: pointer; text-align: left; min-height: 44px; }
+#trip-head span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#trip-head #trip-from { flex: 0 1 auto; max-width: 30%; color: var(--muted); }
+#trip-head #trip-to { flex: 1 1 auto; font-weight: 700; }
+#trip-head .arrow { flex: none; color: var(--muted); }
+#trip-head .dot { flex: none; position: static; }
+#trip-head .edit { flex: none; color: var(--accent); font-size: 13px; }
+body:not(.has-route) #trip-head { display: none; }
+body.has-route:not(.editing) #search-form, body.has-route:not(.editing) #shortcuts { display: none; }
+body.has-route #planner {
+  top: auto; bottom: calc(var(--safe-bottom) + 86px);
+  max-height: min(56dvh, calc(100dvh - var(--safe-top) - var(--safe-bottom) - 150px));
+  overflow: auto; padding-bottom: 0;
+}
+body.has-route.editing #planner { top: calc(var(--safe-top) + 12px); bottom: auto; max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 110px); }
+body.has-route #summary { margin-top: 10px; }
+body.has-route #route-opts { margin-top: 6px; }
+/* Démarrer / Simuler toujours visibles en bas de la feuille. */
+#start-row { position: sticky; bottom: 0; z-index: 2; margin: 0 -12px; padding: 10px 12px 12px; background: linear-gradient(transparent, rgba(14, 20, 32, 0.98) 22%); }
+#start-row .btn { min-height: 52px; font-size: 18px; }
+
+/* Dans la feuille : l'essentiel d'abord (durée, variantes, Démarrer), les options ensuite. */
+body.has-route:not(.editing) #planner { display: flex; flex-direction: column; max-height: min(50dvh, calc(100dvh - var(--safe-top) - var(--safe-bottom) - 200px)); }
+body.has-route:not(.editing) #trip-head { order: 0; flex: none; }
+body.has-route:not(.editing) #summary { order: 1; }
+body.has-route:not(.editing) #route-opts { order: 2; }
+body.has-route:not(.editing) #status, body.has-route:not(.editing) #results { order: 3; }
+
+/* Réglage de la simulation : en bas à droite, au-dessus de la barre (il était collé sous l'encoche de l'iPhone). */
+#sim-ctl { position: fixed; right: 10px; bottom: calc(var(--safe-bottom) + 152px); z-index: 6; background: var(--bg); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }

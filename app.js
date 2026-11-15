@@ -14,7 +14,11 @@ const CONFIG = {
   incidents: 'api/incidents', // fourni par server.js (relais du flux open data Bison Futé)
   // Facultatif : dans la console du navigateur, localStorage.setItem('mapillaryToken', '…')
   mapillaryToken: readStore('mapillaryToken'),
-  startView: { center: [2.35, 46.8], zoom: 5 },
+  // Vue de départ : le domicile s'il est enregistré (sinon la France), le GPS recentre ensuite.
+  startView: (() => {
+    try { const h = JSON.parse(localStorage.getItem('places') || '{}').home; if (h) return { center: [h.lon, h.lat], zoom: 13 }; } catch { /* rien */ }
+    return { center: [2.35, 46.8], zoom: 5 };
+  })(),
   colors: { route: '#19d3b5', done: 'rgba(255,255,255,0.28)', casing: '#0b3d36' },
 };
 
@@ -547,6 +551,7 @@ function instruction(s) {
 async function planRoute() {
   $('results').hidden = true;
   $('summary').hidden = true;
+  document.body.classList.remove('has-route');
   setStatus('Calcul de l\'itinéraire…');
   try {
     const from = await resolvePlace('from');
@@ -574,8 +579,14 @@ async function planRoute() {
 // Affiche le trajet retenu : tracé, durée, distance, état du trafic et choix entre les variantes.
 function showSummary() {
   const R = S.route;
+  document.body.classList.add('has-route');
+  document.body.classList.remove('editing');
+  $('trip-head').hidden = false;
+  $('trip-from').textContent = (S.from && S.from.label ? S.from.label : 'Ma position').split(',')[0];
+  $('trip-to').textContent = (S.to && S.to.label ? S.to.label : '').split(',')[0];
   drawRoute();
-  fitRoute();
+  $('summary').hidden = false;
+  requestAnimationFrame(() => requestAnimationFrame(fitRoute)); // une fois la feuille du bas à sa taille
   const time = R.viaTomTom ? R.duration : R.duration + (R.jamDelay || 0);
   const label = R.viaTomTom || R.trafficSource === 'TomTom' ? 'trafic compris' : R.trafficKnown ? 'bouchons de Nantes compris' : 'hors bouchons';
   $('summary-text').innerHTML = '<b>' + fmtDuration(time) + '</b> ' + label + ' · ' + fmtDist(R.total) +
@@ -604,8 +615,11 @@ function drawRoute() {
 function fitRoute() {
   const b = new maplibregl.LngLatBounds();
   for (const c of S.route.coords) b.extend(c);
-  const top = $('planner').hidden ? 60 : $('planner').offsetHeight + 40;
-  map.fitBounds(b, { padding: { top, bottom: 60, left: 40, right: 40 }, pitch: 30, bearing: 0, duration: 900 });
+  // La feuille du trajet est en bas : on cadre le tracé dans la partie de carte qui reste visible.
+  const sheet = $('planner').hidden ? 0 : $('planner').getBoundingClientRect();
+  const sheetTop = sheet ? sheet.top : window.innerHeight;
+  const bottom = Math.max(60, window.innerHeight - sheetTop + 30);
+  map.fitBounds(b, { padding: { top: 70, bottom, left: 40, right: 40 }, pitch: 0, bearing: 0, duration: 900 });
 }
 
 // ---------------------------------------------------------------- formats
@@ -1767,3 +1781,12 @@ window.addEventListener('load', restoreTrip);
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((r) => r.update()).catch(() => {});
 
 window.cap = { S, map }; // pratique pour déboguer dans la console
+
+// Feuille du trajet : toucher l'en-tête « Départ → Arrivée » pour modifier la recherche.
+$('trip-head').addEventListener('click', () => {
+  document.body.classList.toggle('editing');
+  if (document.body.classList.contains('editing')) setTimeout(() => $('to').focus(), 50);
+});
+// Réglages
+$('prefs-btn').addEventListener('click', () => { $('prefs').hidden = false; });
+$('prefs-close').addEventListener('click', () => { $('prefs').hidden = true; });
