@@ -10,6 +10,7 @@ const CONFIG = {
   nominatim: 'https://nominatim.openstreetmap.org/search',
   panoramax: 'https://api.panoramax.xyz/api/search',
   overpass: 'https://overpass-api.de/api/interpreter',
+  nantes: 'https://data.nantesmetropole.fr/api/explore/v2.1/catalog/datasets/244400404_fluidite-axes-routiers-nantes-metropole/records',
   incidents: 'api/incidents', // fourni par server.js (relais du flux open data Bison Futé)
   // Facultatif : dans la console du navigateur, localStorage.setItem('mapillaryToken', '…')
   mapillaryToken: readStore('mapillaryToken'),
@@ -114,6 +115,14 @@ map.on('load', () => {
       'line-width': ['interpolate', ['linear'], ['zoom'], 8, 3, 14, 7, 18, 20],
       'line-gradient': progressGradient(0),
     },
+  }, buildingLayer);
+
+  // Bouchons en direct : portions du trajet colorées en orange (dense), rouge (saturé) ou rouge sombre (bloqué).
+  map.addSource('jams', { type: 'geojson', data: emptyFC });
+  map.addLayer({
+    id: 'route-jam', type: 'line', source: 'jams',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 3, 14, 7, 18, 20] },
   }, buildingLayer);
 
   // Flèche de manœuvre à l'approche d'un carrefour.
@@ -280,12 +289,13 @@ $('from-gps').addEventListener('click', async () => {
 $('search-form').addEventListener('submit', (e) => { e.preventDefault(); planRoute(); });
 
 // ---------------------------------------------------------------- itinéraire
-async function fetchRoute(from, to) {
-  const url = `${CONFIG.osrm}${from.lon},${from.lat};${to.lon},${to.lat}?steps=true&overview=false&geometries=geojson`;
+// Demande l'itinéraire habituel et ses variantes (jusqu'à trois trajets), pour pouvoir choisir le plus rapide.
+async function fetchRoutes(from, to) {
+  const url = `${CONFIG.osrm}${from.lon},${from.lat};${to.lon},${to.lat}?steps=true&overview=false&geometries=geojson&alternatives=true`;
   const res = await fetch(url);
   const json = await res.json().catch(() => null);
   if (!res.ok || !json || json.code !== 'Ok') throw new Error('Aucun itinéraire voiture trouvé entre ces deux points.');
-  return buildRoute(json.routes[0]);
+  return json.routes.map(buildRoute);
 }
 
 // Met bout à bout les géométries des étapes et calcule où chaque étape commence.
@@ -539,15 +549,16 @@ async function planRoute() {
     const from = await resolvePlace('from');
     if (!from.gps && $('to').value.trim() && !S.to) await new Promise((r) => setTimeout(r, 1100)); // 1 requête/s max chez Nominatim
     const to = await resolvePlace('to');
-    S.route = await fetchRoute(from, to);
+    S.route = await bestRoute(from, to); // le plus rapide, bouchons connus compris (voir traffic.js)
     S.photo = null;
     drawRoute();
     startMarker.setLngLat([from.lon, from.lat]).addTo(map);
     destMarker.setLngLat([to.lon, to.lat]).addTo(map);
     fitRoute();
     $('summary-text').innerHTML =
-      '<b>' + fmtDuration(S.route.duration) + '</b> hors bouchons · ' + fmtDist(S.route.total) + '<br><span>vers ' + escapeHtml(to.label) + '</span>';
+      '<b>' + fmtDuration(S.route.duration + (S.route.jamDelay || 0)) + '</b> ' + (S.route.trafficKnown ? 'bouchons de Nantes compris' : 'hors bouchons') + ' · ' + fmtDist(S.route.total) + '<br><span>vers ' + escapeHtml(to.label) + '</span>';
     $('summary-hazards').textContent = '';
+    $('summary-traffic').textContent = trafficSummary();
     $('summary').hidden = false;
     setStatus('');
     loadPhoto(to); // en arrière-plan, pour l'afficher à l'approche
@@ -561,6 +572,7 @@ function drawRoute() {
   if (!map.getSource('route')) return;
   map.getSource('route').setData({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: S.route.coords } });
   map.setPaintProperty('route-line', 'line-gradient', progressGradient(0));
+  drawJams();
 }
 
 function fitRoute() {
@@ -907,20 +919,8 @@ async function reroute(from) {
   speak('Vous avez quitté l\'itinéraire. Je recalcule.', true);
   diag('recalcul (écart ' + S.offCount + ', contresens ' + S.wrongCount + ')');
   try {
-    S.route = await fetchRoute({ lon: from[0], lat: from[1] }, S.to);
-    S.d = 0;
-    S.spoken = {};
-    S.manKey = '';
-    S.offCount = 0;
-    S.gps = null;
-    S.hazardDone = {};
-    drawRoute();
-    streetReset();
-    loadHazards();
-    S.wrongCount = 0;
+    useRoute(await bestRoute({ lon: from[0], lat: from[1] }, S.to));
     S.rerouteFailed = false;
-    S.navT0 = performance.now();
-    S.planAtStart = S.route.duration;
   } catch { /* on garde l'ancien itinéraire, nouvel essai au prochain écart */
     S.offCount = 0;
     S.wrongCount = 0;
@@ -1117,13 +1117,15 @@ function updateUi(i, next, toMan) {
     if (elapsed > 90 && planned > 45) S.pace += (clamp(elapsed / planned, 0.8, 2.5) - S.pace) * 0.05;
     left *= S.pace;
   }
+  left += jamDelayAhead(); // retard des bouchons connus encore devant nous
   const eta = new Date(Date.now() + left * 1000);
   setHtml('eta', String(eta.getHours()).padStart(2, '0') + ':' + String(eta.getMinutes()).padStart(2, '0'));
   setHtml('remaining', fmtDuration(left) + ' · ' + fmtDist(R.total - S.d));
   setHtml('speed', '<b>' + Math.round(S.speed * 3.6) + '</b><span>km/h</span>');
 
-  // Les alertes trafic changent pendant qu'on roule : on les recharge toutes les 5 minutes.
-  if (nowMs - (S.hazardsAt || 0) > 300000) { S.hazardsAt = nowMs; if (S.hazardsLoadedOnce) loadHazards(); S.hazardsLoadedOnce = true; }
+  // Alertes et bouchons changent pendant qu'on roule : on les relit toutes les 3 minutes,
+  // et on bascule sur un trajet plus rapide s'il en existe un (voir traffic.js).
+  if (nowMs - (S.hazardsAt || 0) > 180000) { S.hazardsAt = nowMs; if (S.hazardsLoadedOnce) refreshTraffic(); S.hazardsLoadedOnce = true; }
 
   // Street View du prochain carrefour (si une clé Google est enregistrée).
   streetUpdate();

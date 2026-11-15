@@ -97,13 +97,28 @@ async function loadHazards() {
     list.push({ id: 'z' + cam.id, type: 'zone', along: start, end: start + len, limit, icon: '⚠️', title: 'Zone de danger' });
   }
 
+  // Bouchons en direct repérés sur le trajet (voir traffic.js).
+  for (const j of R.jams || []) {
+    const len = j.to - j.from;
+    const min = Math.round(j.delay / 60);
+    const start = Geo.pointAt(R.coords, R.cum, j.from);
+    list.push({
+      id: 'j' + Math.round(j.from), type: 'incident', jam: true, along: j.from, lon: start[0], lat: start[1],
+      icon: '🚗', severe: j.state === 6,
+      title: (j.state === 6 ? 'Route bloquée' : j.state === 5 ? 'Bouchon' : 'Trafic dense') + ' sur ' + fmtDist(len),
+      say: (j.state === 6 ? 'route bloquée' : j.state === 5 ? 'bouchon' : 'trafic dense') + ' sur ' + fmtDistSpoken(len) +
+        (min >= 1 ? ', environ ' + min + (min > 1 ? ' minutes' : ' minute') + ' de retard' : ''),
+      place: min >= 1 ? '+' + min + ' min' : '',
+    });
+  }
+
   list.sort((a, b) => a.along - b.along);
   S.hazards = list;
   S.hazardsFor = R;
   clearHazardMarkers();
 
   for (const h of list) {
-    if (h.type !== 'incident') continue;
+    if (h.type !== 'incident' || h.jam) continue; // les bouchons sont dessinés sur le tracé, pas en pastille
     const el = document.createElement('div');
     el.className = 'incident' + (h.severe ? ' severe' : '');
     el.textContent = h.icon;
@@ -112,8 +127,8 @@ async function loadHazards() {
     S.hazardMarkers.push(new maplibregl.Marker({ element: el }).setLngLat([h.lon, h.lat]).setPopup(popup).addTo(map));
   }
 
-  const nInc = list.filter((h) => h.type === 'incident').length;
-  const nZone = list.length - nInc;
+  const nInc = list.filter((h) => h.type === 'incident' && !h.jam).length;
+  const nZone = list.filter((h) => h.type === 'zone').length;
   const parts = [];
   if (nInc) parts.push(nInc + (nInc > 1 ? ' alertes trafic' : ' alerte trafic'));
   if (nZone) parts.push(nZone + (nZone > 1 ? ' zones de danger' : ' zone de danger'));
@@ -162,7 +177,7 @@ function updateHazards() {
     sub = (dist > 30 ? 'Dans ' + fmtDist(dist) : 'Ici') + (active.place ? ' · ' + active.place : '');
     if (!S.hazardDone[active.id]) {
       S.hazardDone[active.id] = true;
-      speakAlert('Attention. Dans ' + fmtDistSpoken(dist) + ', ' + lowerFirst(active.title) + '.' +
+      speakAlert('Attention. Dans ' + fmtDistSpoken(dist) + ', ' + (active.say || lowerFirst(active.title)) + '.' +
         (active.severe ? ' Ralentissez et soyez prudent.' : ''));
     }
   }
