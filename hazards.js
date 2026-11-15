@@ -161,7 +161,9 @@ function updateHazards() {
   const warn = clamp(S.speed * 40, 500, 2000); // on prévient environ 40 s avant
   for (const h of S.hazards) {
     if (h.type === 'zone') {
-      if (S.d >= h.along && S.d <= h.end) { active = h; break; }
+      // Prévenue à l'avance (environ 15 s de route, entre 300 et 800 m), puis affichée tant qu'on est dedans.
+      const ahead = clamp(S.speed * 15, 300, 800);
+      if (S.d >= h.along - ahead && S.d <= h.end) { active = h; break; }
     } else if (h.along - S.d <= warn && h.along - S.d > -60) { active = h; break; }
   }
   const box = $('alert');
@@ -172,17 +174,22 @@ function updateHazards() {
   let sub;
   let over = false;
   if (active.type === 'zone') {
-    over = !!active.limit && S.speed * 3.6 > active.limit + 3;
-    sub = active.limit ? 'Limite ' + active.limit + ' km/h' : 'Respectez la limitation';
+    // Limite : celle de la zone si on la connaît, sinon celle de la route (TomTom) à l'entrée de la zone.
+    const lim = active.limit || (typeof limitAt === 'function' ? limitAt(active.along + 5) : 0);
+    const before = active.along - S.d;
+    const inside = before <= 0;
+    over = inside && !!lim && S.speed * 3.6 > lim + 3;
+    sub = (inside ? '' : 'Dans ' + fmtDist(before) + ' · ') + (lim ? 'Limite ' + lim + ' km/h' : 'Respectez la limitation');
     if (over) title = 'Ralentissez';
     if (!S.hazardDone[active.id]) {
       S.hazardDone[active.id] = true;
-      speakAlert('Attention, zone de danger.' + (active.limit ? ' Limite ' + active.limit + ' kilomètres heure.' : ''));
+      // Une seule annonce, à l'avance : le temps de ralentir calmement avant la zone.
+      speakAlert((inside ? 'Zone de danger.' : 'Zone de danger dans ' + roundSpoken(before) + '.') + (lim ? ' Limite ' + lim + '.' : ''));
     }
     // Une seule alerte de vitesse toutes les 30 s, partagée avec le panneau de limite (pas de doublon).
     if (over && performance.now() - Math.max(S.overAt || 0, S.speedSaidAt || 0) > 30000) {
       S.overAt = S.speedSaidAt = performance.now();
-      speakAlert('Ralentissez. Limite ' + active.limit + '.');
+      speakAlert('Ralentissez. Limite ' + lim + '.');
     }
   } else {
     const dist = active.along - S.d;

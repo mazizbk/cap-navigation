@@ -1897,9 +1897,21 @@ function updateSpeedLimit() {
   const busyAhead = st && (st.start - S.d < (exitInfo(stepIndexAt(S.d) + 1, st) ? 2400 : 350));
   const quiet = busyAhead || voiceBusy() || now - (S.speedSaidAt || -1e9) < 60000;
   if (alarm && !quiet) { S.speedSaidAt = now; speak('Attention, limité à ' + lim + '.'); }
+  // Limite plus basse devant (entrée de ville, travaux…) alors qu'on roule plus vite : on prévient à l'avance,
+  // environ 12 s avant, une seule fois par changement.
+  const lookahead = clamp(S.speed * 12, 200, 600);
+  const L = S.route.limits || [];
+  const nextDrop = L.find((l) => l.from > S.d + 15 && l.from - S.d < lookahead && l.kmh < lim);
+  // Si une zone de danger commence au même endroit, son annonce dit déjà la limite : pas de doublon.
+  const zoneSoon = nextDrop && (S.hazards || []).some((h) => h.type === 'zone' && Math.abs(h.along - nextDrop.from) < 900);
+  if (nextDrop && !zoneSoon && kmh > nextDrop.kmh + margin && S.dropSaid !== nextDrop.from && !busyAhead && !voiceBusy()) {
+    S.dropSaid = nextDrop.from;
+    S.speedSaidAt = now;
+    speak('Limite ' + nextDrop.kmh + ' dans ' + roundSpoken(nextDrop.from - S.d) + '.');
+  }
   // Nouvelle limite plus basse juste devant : on la dit une fois (entrée d'agglomération, travaux…).
   if (lim !== S.lastLimit) {
-    if (S.lastLimit && lim < S.lastLimit && kmh > lim + margin && !quiet) { S.speedSaidAt = now; speak('Limite ' + lim + '.'); }
+    if (S.lastLimit && lim < S.lastLimit && kmh > lim + margin && !quiet && S.dropSaid !== (L.find((l) => S.d >= l.from && S.d < l.to) || {}).from) { S.speedSaidAt = now; speak('Limite ' + lim + '.'); }
     S.lastLimit = lim;
   }
 }
