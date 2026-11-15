@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Cap — navigation immersive</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#0e1420">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Cap">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="icon" href="icons/icon-180.png">
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="map"></div>
+
+  <button id="view-toggle" class="btn">Plan</button>
+
+  <!-- Préparation du trajet -->
+  <section id="planner" class="panel">
+    <form id="search-form" autocomplete="off">
+      <div class="field">
+        <span class="dot dot-start"></span>
+        <input id="from" type="search" placeholder="Départ : ma position" enterkeyhint="search" aria-label="Départ">
+        <button type="button" id="from-gps" class="icon-btn" title="Utiliser ma position" aria-label="Utiliser ma position">
+          <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="4" fill="currentColor"/><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4" stroke="currentColor" stroke-width="2"/></svg>
+        </button>
+      </div>
+      <div class="field">
+        <span class="dot dot-end"></span>
+        <input id="to" type="search" placeholder="Où allez-vous ?" enterkeyhint="search" aria-label="Arrivée">
+      </div>
+      <button type="submit" id="go" class="btn btn-primary">Itinéraire</button>
+    </form>
+    <ul id="results" hidden></ul>
+    <div id="summary" hidden>
+      <div id="summary-text"></div>
+      <div id="summary-hazards"></div>
+      <div class="row" id="recon-row">
+        <button type="button" id="recon-btn" class="btn">Repérer les carrefours</button>
+        <a id="summary-sv" class="btn" target="_blank" rel="noopener">Voir l'arrivée</a>
+      </div>
+      <label id="car-option"><input type="checkbox" id="car-screen"> Afficher les consignes sur l'écran de la voiture (Bluetooth, expérimental)</label>
+      <div class="row">
+        <button id="start-nav" class="btn btn-primary">Démarrer</button>
+        <button id="start-sim" class="btn">Simuler</button>
+      </div>
+    </div>
+    <p id="status" role="status"></p>
+    <details id="settings">
+      <summary>Photos Google dans l'application</summary>
+      <p>Avec une clé Google Maps (service « Maps Embed API »), Street View s'affiche ici même, dans le repérage et à l'approche des carrefours. Sans clé, les boutons « Street View » ouvrent Google dans un nouvel onglet.</p>
+      <div class="row">
+        <input id="gkey" type="password" placeholder="Votre clé Google Maps" autocomplete="off" aria-label="Clé Google Maps">
+        <button type="button" id="gkey-save" class="btn">Enregistrer</button>
+      </div>
+      <p id="gkey-state"></p>
+    </details>
+  </section>
+
+  <!-- Repérage avant le départ : chaque carrefour, avec le vrai lieu dans Google Street View -->
+  <section id="recon" class="panel" hidden>
+    <header><b>Repérage du trajet</b><button id="recon-close" class="icon-btn" aria-label="Fermer">✕</button></header>
+    <p>À faire avant de partir. Chaque bouton montre Google Street View juste avant le carrefour, tourné dans votre sens de marche.</p>
+    <div id="recon-view" hidden><iframe id="recon-frame" title="Google Street View" loading="lazy" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe></div>
+    <ul id="recon-list"></ul>
+  </section>
+
+  <!-- Guidage -->
+  <section id="nav" hidden>
+    <div id="top">
+      <div id="banner" class="panel">
+        <div id="man-icon"></div>
+        <div id="man-main">
+          <div id="man-dist"></div>
+          <div id="man-text"></div>
+          <div id="man-road"></div>
+        </div>
+        <div id="approach"><div id="approach-fill"></div></div>
+        <div id="sign" hidden></div>
+        <div id="lanes" hidden></div>
+      </div>
+      <div id="then" class="panel" hidden></div>
+      <!-- Google Street View du prochain carrefour (avec une clé Google). Non cliquable : on ne manipule rien en roulant. -->
+      <div id="gsv" class="panel" hidden><iframe id="gsv-frame" title="Google Street View du prochain carrefour" referrerpolicy="no-referrer-when-downgrade"></iframe></div>
+      <!-- Vraie photo de la route, dans le sens de la marche. Toucher pour agrandir. -->
+      <div id="street" class="panel" hidden>
+        <div id="street-a" class="street-img"></div>
+        <div id="street-b" class="street-img"></div>
+        <div id="street-turn" hidden><span id="street-turn-icon"></span><span id="street-turn-text"></span></div>
+        <div id="street-cap"></div>
+      </div>
+    </div>
+
+    <button id="recenter" class="btn btn-primary" hidden>Recentrer</button>
+
+    <div id="alert" class="panel" hidden>
+      <div id="alert-icon"></div>
+      <div><div id="alert-title"></div><div id="alert-sub"></div></div>
+    </div>
+
+    <figure id="arrival" class="panel" hidden>
+      <a id="arrival-sv" class="btn btn-primary" target="_blank" rel="noopener">Voir l'entrée dans Street View</a>
+      <button id="arrival-close" class="icon-btn" aria-label="Fermer la photo">✕</button>
+    </figure>
+
+    <div id="bottom" class="panel">
+      <div id="trip">
+        <div id="eta"></div>
+        <div id="remaining"></div>
+      </div>
+      <div id="speed"><b>0</b><span>km/h</span></div>
+      <button id="sim-speed" class="btn" hidden>×1</button>
+      <button id="mute" class="icon-btn" aria-label="Couper la voix" title="Voix">🔊</button>
+      <button id="stop" class="btn btn-danger">Arrêter</button>
+    </div>
+  </section>
+
+  <script src="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.js"></script>
+  <script src="geo.js"></script>
+  <script src="app.js"></script>
+  <script src="hazards.js"></script>
+  <script src="street.js"></script>
+</body>
+</html>
