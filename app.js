@@ -137,13 +137,20 @@ map.on('load', () => {
   map.addLayer({
     id: 'maneuver-casing', type: 'line', source: 'maneuver', filter: ['==', ['geometry-type'], 'LineString'],
     layout: { 'line-cap': 'butt', 'line-join': 'round' },
-    paint: { 'line-color': '#0e1420', 'line-width': ['interpolate', ['linear'], ['zoom'], 14, 8, 18, 18] },
+    paint: { 'line-color': '#0e1420', 'line-width': ['interpolate', ['linear'], ['zoom'], 14, 9, 18, 23, 20, 38] },
   }, buildingLayer);
   map.addLayer({
     id: 'maneuver-line', type: 'line', source: 'maneuver', filter: ['==', ['geometry-type'], 'LineString'],
     layout: { 'line-cap': 'butt', 'line-join': 'round' },
-    paint: { 'line-color': '#ffd23f', 'line-width': ['interpolate', ['linear'], ['zoom'], 14, 5, 18, 13] },
+    paint: { 'line-color': '#ffd23f', 'line-width': ['interpolate', ['linear'], ['zoom'], 14, 6, 18, 17, 20, 30] },
   }, buildingLayer);
+  const font = (map.getStyle().layers.find((l) => l.layout && l.layout['text-font']) || { layout: { 'text-font': ['Noto Sans Regular'] } }).layout['text-font'];
+  map.addLayer({
+    id: 'maneuver-chevrons', type: 'symbol', source: 'maneuver', filter: ['==', ['geometry-type'], 'LineString'],
+    layout: { 'symbol-placement': 'line', 'symbol-spacing': 34, 'text-field': '›', 'text-font': font, 'text-size': ['interpolate', ['linear'], ['zoom'], 15, 16, 19, 34],
+      'text-keep-upright': false, 'text-allow-overlap': true, 'text-ignore-placement': true, 'text-rotation-alignment': 'map', 'text-pitch-alignment': 'map' },
+    paint: { 'text-color': '#0e1420' },
+  });
   map.addLayer({
     id: 'maneuver-head', type: 'fill', source: 'maneuver', filter: ['==', ['geometry-type'], 'Polygon'],
     paint: { 'fill-color': '#ffd23f', 'fill-outline-color': '#0e1420' },
@@ -1220,20 +1227,24 @@ function frame(t) {
   if (turnAhead && next.exitBearing === undefined) {
     next.exitBearing = Geo.bearing(Geo.pointAt(R.coords, R.cum, next.start + 6), Geo.pointAt(R.coords, R.cum, next.start + 32));
   }
-  const approach = turnAhead ? clamp(1 - toMan / 150, 0, 1) : 0;
+  const fastExit = !!(next && exitInfo(i + 1, next));
+  const reach = fastExit ? 800 : 250; // distance à laquelle la vue carrefour commence
+  const approach = turnAhead ? clamp(1 - toMan / reach, 0, 1) : 0;
   const leaving = i > 0 && isTurn(cur) ? clamp(1 - (S.d - cur.start) / 45, 0, 1) : 0;
   S.camK += (Math.max(approach, leaving) - S.camK) * Math.min(1, dt * 2.5);
-  S.turn = turnAhead && toMan < 150 ? { approach, toMan, exit: next.exitBearing, step: next } : null;
+  S.turn = turnAhead && toMan < reach ? { approach, toMan, exit: next.exitBearing, step: next } : null;
   S.toMan = toMan;
 
   if (S.following) {
-    const zoomT = 18.3 - clamp(S.speed / 33, 0, 1) * 2.3 + 0.9 * S.camK;
+    const zoomT = 18.3 - clamp(S.speed / 33, 0, 1) * 2.3 + 1.0 * S.camK; // on se rapproche du carrefour, la voiture reste à l'écran
     const pitchT = 58 - 12 * S.camK; // plus incliné = beaucoup plus d'images aériennes à charger, donc moins fluide
     S.zoom += (zoomT - S.zoom) * Math.min(1, dt * 1.3);
     S.pitch += (pitchT - S.pitch) * Math.min(1, dt * 1.3);
-    const bearingT = approach > 0 ? Geo.lerpAngle(S.bearing, next.exitBearing, 0.4 * approach) : S.bearing;
+    // La caméra pivote déjà vers la route à prendre, pour voir où l'on va avant d'y être.
+    const bearingT = approach > 0 ? Geo.lerpAngle(S.bearing, next.exitBearing, 0.55 * approach) : S.bearing;
     S.camBearing = Geo.lerpAngle(S.camBearing, bearingT, Math.min(1, dt * 3));
-    const center = !off && S.camK > 0.03 ? Geo.pointAt(R.coords, R.cum, S.d + 28 * S.camK) : S.pos;
+    // Le carrefour est placé dans le tiers haut de la carte visible : on regarde devant, pas sous la voiture.
+    const center = !off && S.camK > 0.03 ? Geo.pointAt(R.coords, R.cum, S.d + Math.min(30, 12 + 0.2 * Math.max(0, toMan)) * S.camK) : S.pos;
     // Quand la photo apparaît ou disparaît, la carte se décale progressivement au lieu de sauter.
     S.padTop += (S.padTarget - S.padTop) * Math.min(1, dt * 3);
     map.jumpTo({ center, bearing: S.camBearing, zoom: S.zoom, pitch: S.pitch, padding: { top: S.padTop, bottom: 0, left: 0, right: 0 } });
@@ -1391,7 +1402,11 @@ function updateUi(i, next, toMan) {
 function updateManeuver(i, next, toMan) {
   const src = map.getSource('maneuver');
   if (!src) return;
-  const show = next && next.type !== 'arrive' && toMan < 260;
+  // Juste après un virage, on garde son tracé affiché jusqu'à 45 m plus loin : on voit qu'on a réussi.
+  const cur = S.route.steps[i];
+  if (i > 0 && isTurn(cur) && S.d - cur.start < 45 && !(next && next.start - S.d < 120)) { next = cur; i -= 1; toMan = cur.start - S.d; }
+  const reach = next && exitInfo(i + 1, next) ? 800 : 260;
+  const show = next && next.type !== 'arrive' && toMan < reach;
   const key = show ? String(i + 1) + ':' + S.route.total : '';
   if (key === S.manKey) return;
   S.manKey = key;
@@ -1399,7 +1414,7 @@ function updateManeuver(i, next, toMan) {
   const R = S.route;
   // Rond-point : la flèche suit tout le parcours dans l'anneau, jusqu'à la sortie à prendre.
   const through = next.roundabout ? next.distance : 0;
-  const line = Geo.slice(R.coords, R.cum, next.start - 40, next.start + through + 45);
+  const line = Geo.slice(R.coords, R.cum, Math.max(S.d - 10, next.start - Math.min(reach, 250)), next.start + through + 55);
   const end = line[line.length - 1];
   const b = Geo.bearing(line[line.length - 2], end);
   const head = [Geo.destination(end, b, 13), Geo.destination(end, b - 90, 8), Geo.destination(end, b + 90, 8)];
