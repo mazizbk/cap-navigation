@@ -1371,6 +1371,7 @@ function arrive() {
 }
 
 function stopNav() {
+  if (S.updateWaiting) setTimeout(() => location.reload(), 300);
   S.mode = 'plan';
   cancelAnimationFrame(S.raf);
   if (S.watchId !== null) navigator.geolocation.clearWatch(S.watchId);
@@ -1711,6 +1712,7 @@ function diagReport() {
     'Voix : ' + ('speechSynthesis' in window ? speechSynthesis.getVoices().filter((v) => v.lang.startsWith('fr')).length + ' voix françaises' : 'ABSENTE'),
     'Écran maintenu allumé : ' + ('wakeLock' in navigator ? (S.wake && !S.wake.released ? 'actif' : 'disponible, pas actif') : 'NON GÉRÉ') + (Native ? ' (+ module natif)' : ''),
     'Commandes vocales : ' + (typeof Voice !== 'undefined' && Voice.available ? (Voice.native ? 'oui (natif)' : 'oui (navigateur)') : 'NON DISPONIBLES ici'),
+    'Version : ' + ((window.CAP_CONFIG && window.CAP_CONFIG.version) || 'locale'),
     'Claude (commandes vocales) : ' + (typeof AI !== 'undefined' && AI.enabled ? 'clé enregistrée' : 'pas de clé'),
     'Voix choisie : ' + (Native && Native.hasVoice ? (Native.voiceName() || 'celle du téléphone') : frVoice ? frVoice.name : 'celle du système'),
     'Réseau : ' + (navigator.onLine ? 'connecté' : 'HORS LIGNE'),
@@ -1762,6 +1764,6 @@ $('resume-nav').addEventListener('click', () => { $('resume-nav').hidden = true;
 window.addEventListener('load', restoreTrip);
 
 // ---------------------------------------------------------------- application installable
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((r) => r.update()).catch(() => {});
 
 window.cap = { S, map }; // pratique pour déboguer dans la console

@@ -1,7 +1,7 @@
 // Service worker : rend l'application installable et garde l'interface en cache.
 // Stratégie « réseau d'abord » pour les fichiers de l'app (on a toujours la dernière version),
 // avec repli sur le cache hors connexion. Les tuiles et les API ne sont pas mises en cache.
-const CACHE = 'cap-v1';
+const CACHE = 'cap-v2';
 const SHELL = [
   './', 'index.html', 'style.css', 'native.js', 'gvoice.js', 'geo.js', 'app.js', 'hazards.js', 'street.js', 'traffic.js', 'extras.js', 'parking.js', 'suggest.js', 'ai.js', 'voice.js', 'manifest.webmanifest',
   'icons/icon-180.png', 'icons/icon-512.png',
@@ -26,8 +26,11 @@ self.addEventListener('fetch', (e) => {
   const isShell = e.request.method === 'GET' &&
     ((url.origin === location.origin && !url.pathname.includes('/api/') && !url.pathname.includes('/data/')) || url.hostname === 'unpkg.com');
   if (!isShell) return; // le navigateur gère le reste normalement
+  // « no-cache » : on redemande toujours au serveur si le fichier a changé (sinon le navigateur garde
+  // une ancienne copie jusqu'à 10 minutes et l'iPhone affiche l'ancienne version).
+  const fresh = url.origin === location.origin ? fetch(e.request.url, { cache: 'no-cache', credentials: 'same-origin' }) : fetch(e.request);
   e.respondWith(
-    fetch(e.request)
+    fresh
       .then((res) => {
         if (res.ok) {
           const copy = res.clone();

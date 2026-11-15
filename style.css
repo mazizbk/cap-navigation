@@ -624,3 +624,5 @@ body.listening #mic-btn, body.listening #mic-nav { background: var(--accent); co
 .sug-t em.is-open { color: #3ee08f; }
 .sug-t em.is-closed { color: #ff8a8a; }
 .sug-t em.is-unknown { color: var(--muted); font-weight: 600; }
+
+#app-version { margin: 10px 0 0; font-size: 12px; color: var(--muted); text-align: center; }

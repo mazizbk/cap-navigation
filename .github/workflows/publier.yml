@@ -35,7 +35,9 @@ jobs:
           GOOGLE_MAPS_KEY: ${{ secrets.GOOGLE_MAPS_KEY }}
           TOMTOM_KEY: ${{ secrets.TOMTOM_KEY }}
         run: |
-          printf "window.CAP_CONFIG = { googleKey: '%s', tomtomKey: '%s' };\n" "$GOOGLE_MAPS_KEY" "$TOMTOM_KEY" > config.js
+          V="$(TZ=Europe/Paris date -d "$(git log -1 --format=%cI)" '+%d/%m %H:%M')"
+          printf "window.CAP_CONFIG = { googleKey: '%s', tomtomKey: '%s', version: '%s' };\n" "$GOOGLE_MAPS_KEY" "$TOMTOM_KEY" "$V" > config.js
+          printf '{"version":"%s"}\n' "$V" > version.json
       - name: Reprendre la base des parkings (fabriquée chaque semaine par parkings.yml)
         env:
           GH_TOKEN: ${{ github.token }}

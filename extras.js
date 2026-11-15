@@ -297,3 +297,23 @@ $('gtts-save').addEventListener('click', async () => {
   GVoice.unlock();
   await fillVoices();
 });
+
+// ================================================================= toujours la dernière version
+// À l'ouverture et à chaque retour dans l'application, on compare la version chargée à celle en ligne.
+// Différente : on recharge tout de suite, sauf pendant un guidage (on attend la fin du trajet).
+const LOADED_VERSION = (window.CAP_CONFIG && window.CAP_CONFIG.version) || '';
+async function checkVersion() {
+  if (!LOADED_VERSION || !navigator.onLine) return;
+  try {
+    const res = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) return;
+    const online = (await res.json()).version;
+    if (!online || online === LOADED_VERSION) return;
+    if (S.mode === 'nav') { S.updateWaiting = true; return; }
+    diag('nouvelle version ' + online + ' : rechargement');
+    location.reload();
+  } catch { /* pas de réseau : on garde la version actuelle */ }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkVersion(); });
+setTimeout(checkVersion, 1500);
+$('app-version').textContent = LOADED_VERSION ? 'Version du ' + LOADED_VERSION : 'Version locale';
