@@ -688,3 +688,10 @@ body.has-route:not(.editing) #status, body.has-route:not(.editing) #results { or
 
 /* Réglage de la simulation : en bas à droite, au-dessus de la barre (il était collé sous l'encoche de l'iPhone). */
 #sim-ctl { position: fixed; right: 10px; bottom: calc(var(--safe-bottom) + 152px); z-index: 6; background: var(--bg); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+
+/* ---------- limite de vitesse ---------- */
+#limit { flex: none; width: 46px; height: 46px; border-radius: 50%; background: #fff; border: 5px solid #e3262e; color: #111;
+  display: grid; place-items: center; font-weight: 800; font-size: 18px; font-variant-numeric: tabular-nums; letter-spacing: -0.5px; }
+body.overspeed #limit { animation: limit-pulse 0.8s ease-in-out infinite; }
+body.overspeed #speed b { color: #ff5a5a; }
+@keyframes limit-pulse { 50% { transform: scale(1.15); box-shadow: 0 0 0 6px rgba(227, 38, 46, 0.35); } }

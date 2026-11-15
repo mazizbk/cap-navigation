@@ -1308,6 +1308,7 @@ function updateUi(i, next, toMan) {
   setHtml('eta', String(eta.getHours()).padStart(2, '0') + ':' + String(eta.getMinutes()).padStart(2, '0'));
   setHtml('remaining', fmtDuration(left) + ' · ' + fmtDist(R.total - S.d));
   setHtml('speed', '<b>' + Math.round(S.speed * 3.6) + '</b><span>km/h</span>');
+  updateSpeedLimit();
 
   // Alertes et bouchons changent pendant qu'on roule : on les relit toutes les 3 minutes,
   // et on bascule sur un trajet plus rapide s'il en existe un (voir traffic.js).
@@ -1385,6 +1386,7 @@ function arrive() {
 }
 
 function stopNav() {
+  $('limit').hidden = true; document.body.classList.remove('overspeed'); S.lastLimit = 0;
   if (S.updateWaiting) setTimeout(() => location.reload(), 300);
   S.mode = 'plan';
   cancelAnimationFrame(S.raf);
@@ -1781,6 +1783,36 @@ window.addEventListener('load', restoreTrip);
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((r) => r.update()).catch(() => {});
 
 window.cap = { S, map }; // pratique pour déboguer dans la console
+
+// ---------------------------------------------------------------- limite de vitesse
+// Panneau rond toujours visible pendant le guidage (données TomTom). En cas de dépassement :
+// le panneau et la vitesse passent en rouge, et une seule annonce vocale courte, pas plus d'une fois par minute.
+function limitAt(d) {
+  const L = S.route && S.route.limits;
+  if (!L || !L.length) return 0;
+  for (const l of L) if (d >= l.from && d < l.to) return l.kmh;
+  return 0;
+}
+function updateSpeedLimit() {
+  const lim = S.mode === 'nav' ? limitAt(S.d + 15) : 0;
+  const sign = $('limit');
+  sign.hidden = !lim;
+  if (!lim) { document.body.classList.remove('overspeed'); return; }
+  setHtml('limit', String(lim));
+  const kmh = S.speed * 3.6;
+  const margin = lim <= 50 ? 5 : Math.round(lim * 0.06); // petite marge : les compteurs indiquent un peu plus que la vitesse réelle
+  const over = kmh > lim + margin;
+  const now = performance.now();
+  if (over) S.overSince = S.overSince || now; else S.overSince = 0;
+  const alarm = over && now - S.overSince > 2500; // on ne crie pas pour un dépassement d'une seconde
+  document.body.classList.toggle('overspeed', alarm);
+  if (alarm && now - (S.overSaid || -1e9) > 60000 && !voiceBusy()) { S.overSaid = now; speak('Attention, limité à ' + lim + '.'); }
+  // Nouvelle limite plus basse juste devant : on la dit une fois (entrée d'agglomération, travaux…).
+  if (lim !== S.lastLimit) {
+    if (S.lastLimit && lim < S.lastLimit && kmh > lim + margin && !voiceBusy()) speak('Limite ' + lim + '.');
+    S.lastLimit = lim;
+  }
+}
 
 // Feuille du trajet : toucher l'en-tête « Départ → Arrivée » pour modifier la recherche.
 $('trip-head').addEventListener('click', () => {

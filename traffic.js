@@ -140,6 +140,7 @@ async function tomtomRoutes(from, to, maxAlt) {
   const params = new URLSearchParams({
     key: ttKey(), traffic: 'true', travelMode: 'car', routeType: 'fastest', maxAlternatives: String(maxAlt), sectionType: 'tollRoad',
   });
+  params.append('sectionType', 'speedLimit'); // limites de vitesse le long du trajet (même appel, pas de coût en plus)
   if (S.avoidTolls) params.append('avoid', 'tollRoads');
   if (S.avoidMotorways) params.append('avoid', 'motorways');
   ttUsage(1, 'r');
@@ -150,6 +151,7 @@ async function tomtomRoutes(from, to, maxAlt) {
     pts: r.legs.flatMap((leg) => leg.points.map((p) => [p.longitude, p.latitude])),
     length: r.summary.lengthInMeters, time: r.summary.travelTimeInSeconds, delay: r.summary.trafficDelayInSeconds || 0,
     toll: (r.sections || []).some((s) => s.sectionType === 'TOLL_ROAD'),
+    limits: (r.sections || []).filter((s) => s.sectionType === 'SPEED_LIMIT' && s.maxSpeedLimitInKmh).map((s) => ({ a: s.startPointIndex, b: s.endPointIndex, kmh: s.maxSpeedLimitInKmh })),
   }));
 }
 
@@ -185,6 +187,9 @@ async function osrmAlong(tt, from, to) {
       R.viaTomTom = true;
       R.toll = tt.toll;
       R.ttDelay = tt.delay;
+      // Limites de vitesse : positions TomTom ramenées sur notre tracé (même route, longueurs à 3 % près).
+      const kd = R.total / cum[cum.length - 1];
+      R.limits = (tt.limits || []).map((l) => ({ from: cum[l.a] * kd, to: cum[l.b] * kd, kmh: l.kmh })).sort((x, y) => x.from - y.from);
       return R;
     } catch { /* on réessaie avec moins de points, puis on renonce */ }
   }
