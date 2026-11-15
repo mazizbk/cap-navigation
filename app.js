@@ -743,10 +743,12 @@ function lanesHtml(lanes) {
 // ---------------------------------------------------------------- voix
 // La voix est-elle en train de parler (ou une annonce attend-elle) ?
 function voiceBusy() {
+  if (typeof GVoice !== 'undefined' && GVoice.busy()) return true;
   if (Native && Native.hasVoice) return Native.busy();
   return 'speechSynthesis' in window && (speechSynthesis.speaking || speechSynthesis.pending);
 }
 function stopVoice() {
+  if (typeof GVoice !== 'undefined') GVoice.stop();
   if (Native && Native.hasVoice) Native.stopVoice();
   try { speechSynthesis.cancel(); } catch { /* pas de synthèse vocale */ }
 }
@@ -792,6 +794,12 @@ function speak(text, urgent, steps) {
   const length = 500 + text.length * 62; // durée approximative de l'annonce
   if (urgent || now > (S.voiceUntil || 0)) { S.voiceUntil = now + length; S.voiceSteps = steps || []; }
   else { S.voiceUntil += length; S.voiceSteps = (S.voiceSteps || []).concat(steps || []); }
+  if (typeof GVoice !== 'undefined' && GVoice.on()) { GVoice.say(text, urgent, () => deviceSpeak(text, urgent), voiceRate()); return; }
+  deviceSpeak(text, urgent);
+}
+
+// Voix de l'appareil (secours de la voix Google, ou seule voix sans clé).
+function deviceSpeak(text, urgent) {
   if (Native && Native.hasVoice) { Native.speak(text, urgent); return; } // application iPhone : voix du téléphone
   if (!('speechSynthesis' in window)) return;
   try {
@@ -843,7 +851,23 @@ function roundSpoken(m) {
 //   2. à l'approche, assez tôt pour se placer (150 m en ville, 400 m sur voie rapide ; 2 km avant une sortie de voie rapide) ;
 //   3. au moment d'agir, en quelques mots.
 // Une annonce en cours qui parle déjà de cette manœuvre n'est jamais coupée pour la répéter.
+// Prépare (voix Google) les phrases que la prochaine manœuvre va déclencher, pour qu'elles soient prêtes à temps.
+function prefetchStep(k) {
+  if (typeof GVoice === 'undefined' || !GVoice.on() || S.prefetched === k) return;
+  S.prefetched = k;
+  const next = S.route.steps[k];
+  if (!next || next.type === 'arrive') return;
+  const full = lowerFirst(next.text);
+  const isRing = next.type === 'roundabout' || next.type === 'rotary';
+  const near = clamp(S.speed * 11, 150, 450);
+  const lane = laneAdvice(next.lanes);
+  const texts = [isRing ? 'Prenez la ' + (ORDINAL[next.exit] || next.exit + 'e') + ' sortie' : (next.act || next.text), 'Sortez maintenant.'];
+  for (const d of [near, near - 50, near + 50]) texts.push('Dans ' + roundSpoken(Math.max(50, d)) + ', ' + full + (lane ? '. ' + lane : ''));
+  GVoice.prefetch(texts.map(sayable));
+}
+
 function announce(k, next, toMan) {
+  prefetchStep(k);
   const done = S.spoken[k] || 0;
   // Un simple changement de nom de rue n'est pas une décision : on ne parle pas, pour que les vraies consignes ressortent.
   if (!isTurn(next) && (next.type === 'new name' || next.type === 'continue')) return;

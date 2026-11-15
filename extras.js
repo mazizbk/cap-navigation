@@ -234,11 +234,21 @@ renderShortcuts();
 // ================================================================= réglage de la voix
 // Liste les voix françaises de l'appareil, de la plus naturelle à la moins naturelle, et permet de les écouter.
 async function fillVoices() {
+  $('gtts-note').textContent = GVoice.key() ? (GVoice.on() ? 'Voix Google active : ' + GVoice.voice().replace('fr-FR-Chirp3-HD-', '') + '. Sans réseau, la voix du téléphone prend le relais.' : 'Voix Google en pause (clé refusée ou coupée).') : 'Pas de clé : voix du téléphone.';
+  let google = [];
+  try { google = await GVoice.list(); } catch (err) { $('gtts-note').textContent = 'Clé Google refusée : ' + err.message; }
   const native = Native && Native.hasVoice;
   const list = native ? await Native.voices() : webVoices().map((x) => ({ name: x.name, score: x.score }));
   const sel = $('voice-select');
-  const current = native ? Native.voiceName() : (frVoice ? frVoice.name : '');
+  const current = GVoice.on() ? GVoice.voice() : native ? Native.voiceName() : (frVoice ? frVoice.name : '');
   sel.innerHTML = '';
+  for (const g of google) {
+    const o = document.createElement('option');
+    o.value = 'g:' + g.name;
+    o.textContent = g.name.replace('fr-FR-Chirp3-HD-', '') + (g.gender === 'MALE' ? ' (homme)' : ' (femme)') + ' — humaine, en ligne';
+    o.selected = g.name === current;
+    sel.appendChild(o);
+  }
   for (const v of list) {
     const o = document.createElement('option');
     o.value = v.name;
@@ -252,7 +262,10 @@ async function fillVoices() {
     : 'Cet appareil n\'a que des voix ordinaires. Pour une voix humaine sur iPhone : Réglages › Accessibilité › Contenu énoncé › Voix › Français, téléchargez une voix « premium » (Audrey, Thomas…), puis revenez ici.';
 }
 async function applyVoice() {
-  try { localStorage.setItem('voiceName', $('voice-select').value); localStorage.setItem('voiceRate', $('voice-rate').value); } catch { /* stockage indisponible */ }
+  const val = $('voice-select').value;
+  if (val.startsWith('g:')) { GVoice.setVoice(val.slice(2)); try { localStorage.setItem('gttsOn', '1'); localStorage.setItem('voiceRate', $('voice-rate').value); } catch { /* stockage */ } return; }
+  if (GVoice.key()) { try { localStorage.setItem('gttsOn', '0'); } catch { /* stockage */ } }
+  try { localStorage.setItem('voiceName', val); localStorage.setItem('voiceRate', $('voice-rate').value); } catch { /* stockage indisponible */ }
   if (Native && Native.hasVoice) await Native.useVoice(); else pickVoice();
 }
 $('voice-select').addEventListener('change', applyVoice);
@@ -274,4 +287,13 @@ document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState !== 'visible') return;
   if (Native && Native.hasVoice) await Native.useVoice(); else pickVoice();
   if ($('voice-settings').open) fillVoices();
+});
+
+$('gtts-save').addEventListener('click', async () => {
+  const v = $('gtts-key').value.trim();
+  GVoice.setKey(v);
+  $('gtts-key').value = '';
+  try { localStorage.setItem('gttsOn', v ? '1' : '0'); } catch { /* stockage */ }
+  GVoice.unlock();
+  await fillVoices();
 });

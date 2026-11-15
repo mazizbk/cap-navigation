@@ -90,6 +90,14 @@
         <select id="voice-select" aria-label="Choix de la voix"></select>
         <button type="button" id="voice-test" class="btn">Écouter</button>
       </div>
+      <div id="gtts-box">
+        <p><b>Voix humaine en ligne (Google)</b> — gratuite jusqu'à 1 million de caractères par mois, bien au-delà d'un usage normal.</p>
+        <div class="row">
+          <input id="gtts-key" type="password" placeholder="Collez la clé Google (voix)" autocomplete="off" aria-label="Clé Google voix">
+          <button type="button" id="gtts-save" class="btn">Enregistrer</button>
+        </div>
+        <p id="gtts-note"></p>
+      </div>
       <label class="option" style="margin-top:8px">Vitesse <input type="range" id="voice-rate" min="0.8" max="1.2" step="0.05" value="1"></label>
     </details>
     <details id="ai-settings">
@@ -207,6 +215,7 @@
   <!-- config.js : clé Google Maps. Créé par tools/set_key.ps1 sur le PC, et par la mise en ligne pour la version publiée. -->
   <script src="config.js"></script>
   <script src="native.js"></script>
+  <script src="gvoice.js"></script>
   <script src="geo.js"></script>
   <script src="app.js"></script>
   <script src="hazards.js"></script>

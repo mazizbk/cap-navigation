@@ -593,3 +593,12 @@ body.listening #mic-btn, body.listening #mic-nav { background: var(--accent); co
 #voice-settings .row { display: flex; gap: 8px; }
 #voice-select { flex: 1; min-width: 0; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: #131b2b; color: var(--text); font: inherit; }
 #voice-rate { vertical-align: middle; width: 55%; }
+
+#gtts-box { margin: 10px 0; padding: 10px; border: 1px solid var(--line); border-radius: 12px; }
+#gtts-box p { margin: 4px 0 8px; }
+#gtts-box input { flex: 1; min-width: 0; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: rgba(255,255,255,0.06); color: var(--text); font: inherit; }
+
+/* ---------- boutons du bas toujours visibles (SP95, micro, Plan) : le panneau s'arrête au-dessus d'eux ---------- */
+#planner { max-height: calc(100vh - var(--safe-top) - var(--safe-bottom) - 96px); }
+#view-toggle, #fuel-btn, #mic-btn { z-index: 7; }
+#mic-btn { min-width: 56px; min-height: 48px; font-size: 22px; }
