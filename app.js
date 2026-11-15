@@ -1702,6 +1702,8 @@ function gsvReset() {
 //   - elle disparaît bien AVANT la manœuvre : pour l'approche finale, la carte et la flèche du bandeau restent seules ;
 //   - si on n'a pas au moins 5 secondes pour la regarder, elle n'est pas affichée du tout.
 function updateGoogleView(i, next, toMan) {
+  // Street View qui avance avec la voiture (si sa clé existe) : il remplace l'aperçu fixe.
+  if (typeof GLive !== 'undefined' && GLive.enabled() && S.gsvOn && GLive.update(i, next, toMan)) return;
   const ok = !!S.gkey && S.gsvOn && next && isDecision(next) && next.type !== 'arrive' && !S.route.steps[i].roundabout;
   if (!ok) { if (gsv.step !== -1) gsvReset(); return; }
   if (gsv.step !== i + 1) { gsvReset(); gsv.step = i + 1; gsv.skip = false; }
