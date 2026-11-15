@@ -243,6 +243,10 @@
       <button id="arrival-close" class="icon-btn" aria-label="Fermer la photo">✕</button>
     </figure>
 
+    <div id="stopcard" class="panel" hidden>
+      <span id="stopcard-text"></span>
+      <button type="button" id="stopcard-go" class="btn btn-primary">On repart</button>
+    </div>
     <div id="bottom" class="panel">
       <div id="trip">
         <div id="eta"></div>
@@ -250,6 +254,7 @@
       </div>
       <div id="limit" hidden aria-label="Limitation de vitesse"></div>
       <div id="speed"><b>0</b><span>km/h</span></div>
+      <button id="fuel-nav" class="icon-btn" aria-label="Stations SP95" title="Stations SP95">⛽</button>
       <button id="mic-nav" class="icon-btn" aria-label="Commande vocale" title="Commande vocale">🎤</button>
       <button id="mute" class="icon-btn" aria-label="Couper la voix" title="Voix">🔊</button>
       <button id="stop" class="btn btn-danger">Arrêter</button>
@@ -275,5 +280,6 @@
   <script src="ai.js"></script>
   <script src="voice.js"></script>
   <script src="butler.js"></script>
+  <script src="copilot.js"></script>
 </body>
 </html>

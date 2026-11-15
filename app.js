@@ -1062,7 +1062,8 @@ async function startNav(sim) {
   S.pitch = 58;
 
   S.chained = {};
-  speak('C\'est parti.', true);
+  if (typeof Copilot !== 'undefined') Copilot.reset();
+  speak('C\'est parti. ' + (typeof Copilot !== 'undefined' ? Copilot.briefing() : ''), true);
   keepScreenOn();
 
   if (!sim) {
@@ -1375,6 +1376,7 @@ function updateUi(i, next, toMan) {
   setHtml('remaining', fmtDuration(left) + ' · ' + fmtDist(R.total - S.d));
   setHtml('speed', '<b>' + Math.round(S.speed * 3.6) + '</b><span>km/h</span>');
   updateSpeedLimit();
+  if (typeof Copilot !== 'undefined') Copilot.tick();
 
   // Alertes et bouchons changent pendant qu'on roule : on les relit toutes les 3 minutes,
   // et on bascule sur un trajet plus rapide s'il en existe un (voir traffic.js).
@@ -1434,6 +1436,7 @@ function updateManeuver(i, next, toMan) {
 }
 
 function arrive() {
+  if (typeof Copilot !== 'undefined' && Copilot.onArrive()) return; // étape (pause) : on repart ensuite
   S.mode = 'arrived';
   S.speed = 0;
   cancelAnimationFrame(S.raf);

@@ -214,19 +214,13 @@ async function goToStation(st) {
   if (typeof refineStation === 'function') st = await refineStation(st); // position exacte, d'après la carte
   const place = { label: 'Station ' + (st.brand ? st.brand + ', ' : '') + (st.city || 'service') + ' (' + st.fuel + ')', lon: st.lon, lat: st.lat };
   if (S.mode === 'nav' && S.pos) {
-    // En cours de guidage : on recalcule vers la station. L'ancienne destination reste dans les « récents ».
-    S.to = { ...place, full: place.label };
-    $('to').value = place.label;
-    try {
-      useRoute(await bestRoute({ lon: S.pos[0], lat: S.pos[1] }, S.to, true));
-      destMarker.setLngLat([S.to.lon, S.to.lat]);
-      speak('Itinéraire vers la station-service.', true);
-      saveTrip(true);
-    } catch { setNavNote('Itinéraire vers la station impossible'); }
+    // En cours de guidage : la station devient une étape, la destination finale est gardée.
+    try { await Copilot.stopAt(place, 'Direction la station'); } catch { setNavNote('Itinéraire vers la station impossible'); }
   } else goTo(place);
 }
 
 $('fuel-btn').addEventListener('click', openFuel);
+$('fuel-nav').addEventListener('click', openFuel);
 $('fuel-close').addEventListener('click', () => { $('fuel').hidden = true; });
 
 renderShortcuts();

@@ -769,3 +769,31 @@ body.has-live #alert { padding: 6px 10px; font-size: 13px; }
 .field-label { display: block; margin-top: 8px; color: var(--text); }
 .steps { margin: 12px 0 0; padding-left: 20px; line-height: 1.5; }
 .steps li { margin-bottom: 4px; }
+
+/* ---------- étape (pause) atteinte ---------- */
+#stopcard { position: fixed; left: 10px; right: 10px; bottom: calc(var(--safe-bottom) + 96px); z-index: 8; display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px; max-width: 520px; margin: 0 auto; font-size: 15px; }
+#stopcard span { flex: 1; }
+#stopcard .btn { flex: none; min-height: 48px; }
+
+/* ===== Guidage : un seul bloc en bas (plus de boutons flottants), messages en haut ===== */
+body.navigating #fuel-btn { display: none !important; }        /* ⛽ est dans la barre du bas */
+#fuel-nav { display: none; }
+body.navigating #fuel-nav { display: inline-grid; }
+#bottom .icon-btn { width: 38px; }
+/* Message vocal (« je vous écoute », la phrase entendue) : fin bandeau en haut, sans masquer la carte */
+#voice-hud { top: calc(var(--safe-top) + 6px); bottom: auto; padding: 8px 14px; font-size: 15px; border-radius: 999px; z-index: 30; }
+/* Étape atteinte : la carte d'étape prend la place de l'alerte */
+body:has(#stopcard:not([hidden])) #alert { display: none; }
+
+/* ===== Barre du bas lisible sur iPhone 13 : l'heure d'arrivée ne doit jamais être écrasée ===== */
+#trip { flex: 0 0 auto; min-width: 86px; }
+#eta { font-size: 22px; white-space: nowrap; }
+#remaining { font-size: 12px; }
+#bottom { gap: 4px; padding-left: 12px; padding-right: 8px; }
+#bottom .icon-btn { width: 36px; height: 40px; }
+#stop { flex: 0 0 auto; width: 46px; min-height: 46px; padding: 0; font-size: 0; border-radius: 14px; }   /* bouton rouge carré, sans texte */
+#stop::after { content: '✕'; font-size: 22px; font-weight: 800; }
+#limit { width: 42px; height: 42px; font-size: 16px; border-width: 4px; }
+/* Bulle de la voix : en bas, sur une ligne, au-dessus de la barre (ne masque plus la consigne) */
+#voice-hud { top: auto; bottom: calc(var(--safe-bottom) + 96px); max-width: calc(100vw - 40px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; padding: 8px 14px; }

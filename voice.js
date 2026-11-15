@@ -140,9 +140,11 @@ const Voice = (() => {
   // Avec une clé Claude : la phrase est d'abord comprise par Claude. En cas d'échec (réseau, clé), on revient aux phrases fixes.
   async function run(heard) {
     if (typeof Sug !== 'undefined' && Sug.pickFromSpeech(plain(heard))) return;
+    // À une étape (pause) : « on repart » relance tout de suite le trajet vers la destination finale.
+    if (S.resumeTo && S.mode === 'arrived' && /^(on repart|c'est reparti|on y va|oui|allons y|reprends|repars)/.test(plain(heard))) { await Copilot.resume(); return; }
     // Les ordres courts et sans ambiguïté sont exécutés tout de suite, sans attendre Claude (2 secondes de gagnées).
     const quick = /^(stop|arrete|repete|silence|oui|non|ok|d'accord|demarrer|demarre|domicile|travail|parking|trafic|recentre|station|station la (moins chere|plus proche))$/.test(plain(heard));
-    const answersProposal = !!pending && /^(oui|non|ok|d'accord|vas y|on y va|allons y|volontiers|avec plaisir|pas la peine|non merci)/.test(plain(heard));
+    const answersProposal = !!pending && /^(oui|non|ok|d'accord|vas y|on y va|on repart|c'est reparti|allons y|volontiers|avec plaisir|pas la peine|non merci)/.test(plain(heard));
     if (!quick && !answersProposal && typeof AI !== 'undefined' && AI.enabled) {
       try {
         hud('« ' + heard + ' » … Claude réfléchit', true);
@@ -185,7 +187,7 @@ const Voice = (() => {
     const places = Places.read();
 
     // Réponse à une proposition de l'application (« Dites oui pour y aller »).
-    if (/^(oui|ok|d'accord|vas y|y aller|on y va|parfait)\b/.test(q) && pending) { const act = pending; pending = null; await act(); return; }
+    if (/^(oui|ok|d'accord|vas y|y aller|on y va|on repart|c'est reparti|allons y|parfait|volontiers|avec plaisir)\b/.test(q) && pending) { const act = pending; pending = null; await act(); return; }
     if (/^(non|pas la peine|laisse|annule)\b/.test(q) && pending) { pending = null; speak('D\'accord.'); return; }
     pending = null;
     if (/\b(parking|garer|stationner|stationnement)\b/.test(q)) {
