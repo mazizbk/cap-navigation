@@ -78,8 +78,13 @@
   <section id="recon" class="panel" hidden>
     <header><b>Repérage du trajet</b><button id="recon-close" class="icon-btn" aria-label="Fermer">✕</button></header>
     <p>À faire avant de partir. Chaque bouton montre Google Street View juste avant le carrefour, tourné dans votre sens de marche.</p>
-    <div id="recon-view" hidden><iframe id="recon-frame" title="Google Street View" loading="lazy" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe></div>
     <ul id="recon-list"></ul>
+  </section>
+
+  <!-- Vue Google Street View plein écran, dans l'application -->
+  <section id="svbox" hidden>
+    <iframe id="svbox-frame" title="Google Street View" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>
+    <button type="button" id="svbox-close" class="btn btn-primary">Fermer</button>
   </section>
 
   <!-- Guidage -->

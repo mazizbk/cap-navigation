@@ -1337,6 +1337,26 @@ const viewpointOf = (step) => {
 // Une étape où le conducteur doit choisir (virage, sortie, bretelle, rond-point, arrivée).
 const isDecision = (step) => !step.type.startsWith('exit') && (step.type === 'arrive' || isTurn(step) || /ramp|fork|merge/.test(step.type));
 
+// Affiche Street View au point `d` du trajet SANS quitter l'application : une vue plein écran avec un bouton Fermer.
+// (Sans clé Google, on n'a pas le droit d'intégrer la vue : on ouvre alors Google dans un autre onglet.)
+function showStreetView(d) {
+  if (!S.gkey) { window.open(streetViewUrl(d), '_blank', 'noopener'); return; }
+  $('svbox-frame').src = streetViewEmbedUrl(d);
+  $('svbox').hidden = false;
+}
+$('svbox-close').addEventListener('click', () => {
+  $('svbox').hidden = true;
+  $('svbox-frame').src = 'about:blank';
+});
+// Les liens gardent leur adresse Google (utile sans clé), mais avec la clé le clic reste dans l'application.
+for (const id of ['summary-sv', 'arrival-sv']) {
+  $(id).addEventListener('click', (e) => {
+    if (!S.gkey || !S.route) return;
+    e.preventDefault();
+    showStreetView(S.route.total - 25);
+  });
+}
+
 // Appelé quand un itinéraire vient d'être calculé.
 async function loadPhoto() {
   $('summary-sv').href = streetViewUrl(S.route.total - 25);
@@ -1357,7 +1377,6 @@ function buildRecon() {
   const R = S.route;
   const ul = $('recon-list');
   ul.innerHTML = '';
-  $('recon-view').hidden = true;
   R.steps.forEach((s, k) => {
     if (k === 0 || !isDecision(s)) return;
     const li = document.createElement('li');
@@ -1375,9 +1394,7 @@ function buildRecon() {
       // Avec la clé : la vue s'affiche dans l'application, en haut de la liste.
       a.addEventListener('click', (e) => {
         e.preventDefault();
-        $('recon-frame').src = streetViewEmbedUrl(viewpointOf(s));
-        $('recon-view').hidden = false;
-        $('recon').scrollTop = 0;
+        showStreetView(viewpointOf(s));
       });
     }
     li.appendChild(a);
@@ -1385,7 +1402,7 @@ function buildRecon() {
   });
 }
 $('recon-btn').addEventListener('click', () => { buildRecon(); $('recon').hidden = false; });
-$('recon-close').addEventListener('click', () => { $('recon').hidden = true; $('recon-frame').src = 'about:blank'; });
+$('recon-close').addEventListener('click', () => { $('recon').hidden = true; });
 
 // Pendant le guidage, avec la clé : Street View du prochain carrefour, à moins de 300 m (jamais dans un rond-point).
 function updateGoogleView(i, next, toMan) {
