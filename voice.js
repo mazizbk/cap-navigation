@@ -144,7 +144,7 @@ const Voice = (() => {
         diag('Claude a compris : ' + r.commande + (r.lieu ? ' (' + r.lieu + ')' : ''));
         if ((r.commande === 'destination' || r.commande === 'recherche') && (r.lieu || (r.requetes || []).length)) {
           hud('');
-          return Sug.open(r.lieu || r.requetes[0], r.requetes || []);
+          return Sug.open(r.lieu || r.requetes[0], r.requetes || [], true, heard);
         }
         if (r.commande === 'aucune') { const t = r.reponse || 'Je n\'ai pas compris.'; hud(t); speak(t); return; }
         if (CANON[r.commande]) return runRules(CANON[r.commande]);
@@ -273,7 +273,7 @@ const Voice = (() => {
     // « Va à… », « emmène-moi au… », « itinéraire vers… »
     const m = q.match(/\b(?:va|vas|aller|allons|emmene moi|conduis moi|itineraire|direction|navigue|guide moi|je veux aller|trouve moi|trouve|cherche moi|cherche|ou est|ou se trouve|je cherche)\s+(?:un |une |des |le |la |les )?(?:a la |a l'|au |aux |a |vers la |vers le |vers |pour |chez |jusqu'a |jusqu'au )?(.+)$/);
     if (m && m[1].length > 2) {
-      await Sug.open(m[1]);
+      await Sug.open(m[1], [], true, heard);
       return;
     }
     speak('Je n\'ai pas compris. Dites par exemple : station la moins chère, domicile, ou répète.');

@@ -619,3 +619,8 @@ body.listening #mic-btn, body.listening #mic-nav { background: var(--accent); co
 .sug-t span { color: var(--muted); font-size: 13px; }
 #sug-gbtn { width: 100%; }
 #sug-g { width: 100%; height: 42vh; border: 0; border-radius: 12px; margin-top: 10px; }
+
+.sug-t em { font-style: normal; font-weight: 700; font-size: 13px; }
+.sug-t em.is-open { color: #3ee08f; }
+.sug-t em.is-closed { color: #ff8a8a; }
+.sug-t em.is-unknown { color: var(--muted); font-weight: 600; }

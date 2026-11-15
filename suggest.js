@@ -16,6 +16,7 @@ const Sug = (() => {
   let items = [];
   let seq = 0;
   let lastQuery = '';
+  let wantOpen = false;   // le conducteur a demandé un lieu « ouvert »
 
   const here = () => {
     if (S.pos) return { lon: S.pos[0], lat: S.pos[1] };
@@ -28,13 +29,14 @@ const Sug = (() => {
   async function tomtom(q, c) {
     if (!ttKey() || ttUsage(0, 's') >= TT.monthlyCap) return [];
     ttUsage(1, 's');
-    const params = new URLSearchParams({ key: ttKey(), lat: c.lat.toFixed(5), lon: c.lon.toFixed(5), radius: '40000', limit: '6', language: 'fr-FR', countrySet: 'FR', typeahead: 'false' });
+    const params = new URLSearchParams({ key: ttKey(), lat: c.lat.toFixed(5), lon: c.lon.toFixed(5), radius: '40000', limit: '6', language: 'fr-FR', countrySet: 'FR', typeahead: 'false', openingHours: 'nextSevenDays' });
     const res = await fetch('https://api.tomtom.com/search/2/search/' + encodeURIComponent(q) + '.json?' + params, { signal: AbortSignal.timeout(8000) });
     if (!res.ok) return [];
     return ((await res.json()).results || []).map((r) => {
       const name = (r.poi && r.poi.name) || r.address.streetName || r.address.freeformAddress;
       const street = [r.address.streetNumber, r.address.streetName].filter(Boolean).join(' ');
-      return { name, where: [r.poi ? street : '', r.address.municipality].filter(Boolean).join(', '), lon: r.position.lon, lat: r.position.lat, kind: r.poi ? 'lieu' : 'adresse' };
+      const hours = r.poi && r.poi.openingHours && r.poi.openingHours.timeRanges;
+      return { name, where: [r.poi ? street : '', r.address.municipality].filter(Boolean).join(', '), lon: r.position.lon, lat: r.position.lat, kind: r.poi ? 'lieu' : 'adresse', hours: hours && hours.length ? hours : null };
     });
   }
 
@@ -47,6 +49,27 @@ const Sug = (() => {
       const street = [p.housenumber, p.street].filter(Boolean).join(' ');
       return { name: p.name || street || q, where: [p.name ? street : '', p.city].filter(Boolean).join(', '), lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1], kind: p.name ? 'lieu' : 'adresse' };
     });
+  }
+
+  // Ouvert maintenant ? D'après les horaires des 7 prochains jours donnés par TomTom. null si horaires inconnus.
+  const DAYS = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
+  const hhmm = (d) => d.getHours() + ' h' + (d.getMinutes() ? ' ' + String(d.getMinutes()).padStart(2, '0') : '');
+  const DAYS_FULL = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+  function openState(x) {
+    if (!x.hours) return null;
+    const at = (p) => { const [y, m, d] = p.date.split('-').map(Number); return new Date(y, m - 1, d, p.hour, p.minute); };
+    const now = new Date();
+    let next = null;
+    for (const r of x.hours) {
+      const a = at(r.startTime);
+      const b = at(r.endTime);
+      if (now >= a && now < b) return { open: true, text: 'Ouvert jusqu\'à ' + hhmm(b), said: 'ouvert jusqu\'à ' + hhmm(b) };
+      if (a > now && (!next || a < next)) next = a;
+    }
+    if (!next) return { open: false, text: 'Fermé', said: 'fermé' };
+    const sameDay = next.toDateString() === now.toDateString();
+    const when = (sameDay ? '' : DAYS[next.getDay()] + ' ') + hhmm(next);
+    return { open: false, text: 'Fermé · ouvre ' + when, said: 'fermé, ouvre ' + (sameDay ? '' : DAYS_FULL[next.getDay()] + ' ') + 'à ' + hhmm(next) };
   }
 
   // Ajoute des résultats à la liste : sans doublon (60 m), et plus de 60 km de distance = écarté (sauf ville lointaine demandée).
@@ -79,7 +102,9 @@ const Sug = (() => {
       const li = document.createElement('li');
       const b = document.createElement('button');
       b.type = 'button';
-      b.innerHTML = '<span class="sug-n">' + (k + 1) + '</span><span class="sug-t"><b>' + escapeHtml(x.name) + '</b><span>' +
+      const st = openState(x);
+      b.innerHTML = '<span class="sug-n">' + (k + 1) + '</span><span class="sug-t"><b>' + escapeHtml(x.name) + '</b>' +
+        (st ? '<em class="' + (st.open ? 'is-open' : 'is-closed') + '">' + st.text + '</em>' : (wantOpen ? '<em class="is-unknown">Horaires inconnus</em>' : '')) + '<span>' +
         escapeHtml(x.where || '') + (x.where ? ' · ' : '') + fmtDist(x.road || x.dist) + (x.time ? ' · ' + fmtDuration(x.time) : '') + '</span></span>';
       b.addEventListener('click', () => choose(k));
       li.appendChild(b);
@@ -89,8 +114,13 @@ const Sug = (() => {
   }
 
   // Ouvre la boîte pour `query`. `extra` : recherches supplémentaires (proposées par Claude). `say` : lire les choix à voix haute.
-  async function open(query, extra = [], say = true) {
+  async function open(query, extra = [], say = true, said = '') {
     const my = ++seq;
+    // « pharmacie ouverte », « de garde », « maintenant » : on garde l'intention, on retire ces mots de la recherche.
+    const OPEN = /\b(ouverte?s?|de garde|maintenant|en ce moment|tout de suite|actuellement)\b/gi;
+    wantOpen = OPEN.test([query, said].join(' '));
+    query = query.replace(OPEN, '').replace(/\s+/g, ' ').trim() || query;
+    extra = extra.map((q) => q.replace(OPEN, '').replace(/\s+/g, ' ').trim()).filter(Boolean);
     lastQuery = query;
     items = [];
     $('sug').hidden = false;
@@ -123,12 +153,23 @@ const Sug = (() => {
     // Temps de route plutôt que distance à vol d'oiseau (Port-Louis est proche… de l'autre côté de la rade).
     const cost = (x) => (x.time != null ? x.time : x.dist / 12);
     items.sort((a, b) => b.rel - a.rel || cost(a) - cost(b));
+    if (wantOpen) {
+      // Ouverts d'abord, puis horaires inconnus, fermés en dernier.
+      const rank = (x) => { const st = openState(x); return st ? (st.open ? 0 : 2) : 1; };
+      items.sort((a, b) => rank(a) - rank(b) || b.rel - a.rel || cost(a) - cost(b));
+    }
     if (my !== seq) return;
     render();
     if (!items.length) { if (say) speak('Je n\'ai rien trouvé pour ' + query + '.'); return; }
     if (say) {
-      const top = items.slice(0, 3).map((x, k) => ['Un', 'Deux', 'Trois'][k] + ' : ' + x.name + (x.where ? ', ' + x.where.split(', ').pop() : '') + ', ' + fmtDistSpoken(x.road || x.dist));
-      speak(top.join('. ') + '. Dites le numéro', true);
+      const top = items.slice(0, 3).map((x, k) => {
+        const st = openState(x);
+        return ['Un', 'Deux', 'Trois'][k] + ' : ' + x.name + (x.where ? ', ' + x.where.split(', ').pop() : '') + ', ' + fmtDistSpoken(x.road || x.dist) +
+          (st ? ', ' + st.said : wantOpen ? ', horaires inconnus' : '');
+      });
+      const anyOpen = items.slice(0, 5).some((x) => { const st = openState(x); return st && st.open; });
+      const garde = wantOpen && !anyOpen && /pharmac/i.test(query) ? 'Aucune n\'est indiquée ouverte maintenant. Pour la pharmacie de garde, appelez le 32 37. ' : '';
+      speak(garde + top.join('. ') + '. Dites le numéro', true);
       if (typeof Voice !== 'undefined') Voice.askAgain();
     }
   }
