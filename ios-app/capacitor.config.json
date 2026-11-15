@@ -1,0 +1,13 @@
+{
+  "appId": "fr.capnavigation.app",
+  "appName": "Cap",
+  "webDir": "www",
+  "server": {
+    "url": "https://mazizbk.github.io/cap-navigation/",
+    "cleartext": false
+  },
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#0e1420"
+  }
+}

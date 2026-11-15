@@ -1,0 +1,79 @@
+# Fabrique l'application iPhone native (fichier .ipa non signé) sur un Mac de GitHub.
+# À lancer à la main (onglet Actions > « Application iPhone » > Run workflow), ou à chaque changement de ios-app/.
+# Le fichier obtenu s'installe ensuite par câble avec un outil de signature (voir README).
+name: Application iPhone
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'ios-app/**'
+      - '.github/workflows/ios.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  ipa:
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: ios-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Installer Capacitor et les modules natifs
+        run: npm install --no-audit --no-fund
+
+      - name: Créer le projet Xcode
+        run: npx cap add ios
+
+      - name: Autorisations (localisation, GPS et voix en arrière-plan)
+        run: |
+          PLIST=ios/App/App/Info.plist
+          P=/usr/libexec/PlistBuddy
+          $P -c "Add :NSLocationWhenInUseUsageDescription string 'Cap utilise votre position pour vous guider.'" $PLIST
+          $P -c "Add :NSLocationAlwaysAndWhenInUseUsageDescription string 'Cap utilise votre position pour continuer le guidage quand l écran est verrouillé.'" $PLIST
+          $P -c "Add :UIBackgroundModes array" $PLIST
+          $P -c "Add :UIBackgroundModes:0 string location" $PLIST
+          $P -c "Add :UIBackgroundModes:1 string audio" $PLIST
+          $P -c "Set :CFBundleDisplayName Cap" $PLIST || $P -c "Add :CFBundleDisplayName string Cap" $PLIST
+          $P -c "Print" $PLIST | head -60
+
+      - name: Icône de l'application
+        run: |
+          python3 ../tools/make_icons.py 1024
+          cp ../icons/icon-1024.png ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png
+
+      - name: Synchroniser
+        run: npx cap sync ios
+
+      - name: Compiler (sans signature)
+        run: |
+          xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Release -sdk iphoneos \
+            -archivePath build/App.xcarchive archive \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" | tail -40
+
+      - name: Fabriquer le fichier .ipa
+        run: |
+          mkdir -p Payload
+          cp -R build/App.xcarchive/Products/Applications/App.app Payload/
+          zip -qr Cap.ipa Payload
+          ls -la Cap.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cap-ipa
+          path: ios-app/Cap.ipa
+
+      - name: Publier le fichier dans les « Releases » du dépôt
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete ios --yes --cleanup-tag 2>/dev/null || true
+          gh release create ios Cap.ipa --title "Application iPhone (non signée)" \
+            --notes "Fichier Cap.ipa à installer par câble avec un outil de signature (voir README). Compilé automatiquement, non testé sur appareil."

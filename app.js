@@ -718,8 +718,20 @@ function lanesHtml(lanes) {
 }
 
 // ---------------------------------------------------------------- voix
+// La voix est-elle en train de parler (ou une annonce attend-elle) ?
+function voiceBusy() {
+  if (Native && Native.hasVoice) return Native.busy();
+  return 'speechSynthesis' in window && (speechSynthesis.speaking || speechSynthesis.pending);
+}
+function stopVoice() {
+  if (Native && Native.hasVoice) Native.stopVoice();
+  try { speechSynthesis.cancel(); } catch { /* pas de synthèse vocale */ }
+}
+
 function speak(text, urgent) {
-  if (S.muted || !('speechSynthesis' in window)) return;
+  if (S.muted) return;
+  if (Native && Native.hasVoice) { Native.speak(text, urgent); return; } // application iPhone : voix du téléphone
+  if (!('speechSynthesis' in window)) return;
   try {
     if (urgent) speechSynthesis.cancel(); // une consigne immédiate passe devant
     // Une consigne de direction n'est jamais abandonnée : elle attend son tour.
@@ -734,7 +746,7 @@ function speak(text, urgent) {
 
 // Les alertes (trafic, zone de danger) ne coupent jamais une consigne de direction : elles attendent la fin.
 function speakAlert(text) {
-  if ('speechSynthesis' in window && (speechSynthesis.speaking || speechSynthesis.pending)) S.alertQueue = text;
+  if (voiceBusy()) S.alertQueue = text;
   else speak(text);
 }
 
@@ -862,12 +874,16 @@ async function startNav(sim) {
 
   speak('C\'est parti. ' + S.route.steps[0].text + '.', true);
   try { S.wake = await navigator.wakeLock?.request('screen'); } catch { /* l'écran pourra se mettre en veille */ }
+  if (Native) Native.keepAwake(true);
 
   if (!sim) {
-    S.watchId = navigator.geolocation.watchPosition(onFix, (err) => {
-      setNavNote(err.code === 1 ? 'Localisation refusée' : 'Signal GPS perdu…');
+    const gpsError = (err) => {
+      setNavNote(err.code === 1 || err.code === 'NOT_AUTHORIZED' ? 'Localisation refusée' : 'Signal GPS perdu…');
       diag('GPS erreur ' + err.code + ' ' + err.message);
-    }, { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 });
+    };
+    // Application iPhone : GPS natif, qui continue écran verrouillé. Sinon, GPS du navigateur.
+    const native = Native && Native.hasGps ? await Native.watch(onFix, gpsError) : false;
+    if (!native) S.watchId = navigator.geolocation.watchPosition(onFix, gpsError, { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 });
   }
   S.lastT = 0;
   cancelAnimationFrame(S.raf);
@@ -914,6 +930,24 @@ function onFix(p) {
   }
   S.wrongCount = wrongWay ? (S.wrongCount || 0) + 1 : 0;
   if (S.offCount >= 4 || S.wrongCount >= 4) reroute(raw);
+  if (document.visibilityState === 'hidden') backgroundTick();
+}
+
+// Écran verrouillé ou application en arrière-plan (application iPhone native uniquement) : la carte n'est plus
+// dessinée, mais les positions continuent d'arriver. On avance donc le guidage ici pour que la voix continue.
+function backgroundTick() {
+  const R = S.route;
+  if (!R || !S.gps || S.gps.off || S.mode !== 'nav') return;
+  S.d = S.gps.along;
+  S.speed = S.gps.speed;
+  S.pos = Geo.pointAt(R.coords, R.cum, S.d);
+  const i = stepIndexAt(S.d);
+  const next = R.steps[i + 1];
+  const toMan = next ? next.start - S.d : R.total - S.d;
+  if (next) announce(i + 1, next, toMan);
+  updateHazards();
+  if (S.alertQueue && !voiceBusy()) { speak(S.alertQueue); S.alertQueue = ''; }
+  if (R.total - S.d < 18) arrive();
 }
 
 async function reroute(from) {
@@ -1095,7 +1129,7 @@ function updateUi(i, next, toMan) {
       S.lastStep = i;
     }
     // Une alerte mise en attente passe dès que la voix est libre.
-    if (S.alertQueue && !(speechSynthesis.speaking || speechSynthesis.pending)) {
+    if (S.alertQueue && !voiceBusy()) {
       speak(S.alertQueue);
       S.alertQueue = '';
     }
@@ -1207,9 +1241,10 @@ function stopNav() {
   cancelAnimationFrame(S.raf);
   if (S.watchId !== null) navigator.geolocation.clearWatch(S.watchId);
   S.watchId = null;
+  if (Native) { Native.unwatch(); Native.keepAwake(false); }
   S.wake?.release?.().catch(() => {});
   S.wake = null;
-  try { speechSynthesis.cancel(); } catch { /* rien */ }
+  stopVoice();
   vehicle.remove();
   gsvReset();
   $('gsv-frame').src = 'about:blank';
@@ -1244,7 +1279,7 @@ $('recenter').addEventListener('click', () => {
 $('mute').addEventListener('click', () => {
   S.muted = !S.muted;
   $('mute').textContent = S.muted ? '🔇' : '🔊';
-  if (S.muted) try { speechSynthesis.cancel(); } catch { /* rien */ }
+  if (S.muted) stopVoice();
 });
 // Simulation : l'utilisateur choisit lui-même la vitesse du véhicule, en km/h, et peut mettre en pause.
 // « Auto » (0) = la vitesse normale de chaque route, avec ralentissement avant les virages.
@@ -1505,6 +1540,7 @@ function diagReport() {
     'Connexion sécurisée (https) : ' + (window.isSecureContext ? 'oui' : 'NON — le GPS sera refusé'),
     'GPS : ' + ('geolocation' in navigator ? 'disponible' : 'ABSENT') + ', relevés reçus : ' + (S.fixCount || 0) +
       (S.lastAccuracy ? ', précision ' + Math.round(S.lastAccuracy) + ' m' : ''),
+    'Application native iPhone : ' + (Native ? 'oui (GPS natif ' + (Native.hasGps ? 'oui' : 'NON') + ', voix native ' + (Native.hasVoice ? 'oui' : 'NON') + ')' : 'non'),
     'Voix : ' + ('speechSynthesis' in window ? speechSynthesis.getVoices().filter((v) => v.lang.startsWith('fr')).length + ' voix françaises' : 'ABSENTE'),
     'Écran maintenu allumé : ' + ('wakeLock' in navigator ? (S.wake ? 'actif' : 'disponible') : 'NON GÉRÉ'),
     'Réseau : ' + (navigator.onLine ? 'connecté' : 'HORS LIGNE'),

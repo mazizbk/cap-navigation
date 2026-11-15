@@ -2,6 +2,7 @@
 Usage : python tools/make_icons.py
 """
 import os
+import sys
 import struct
 import zlib
 
@@ -57,7 +58,8 @@ def make(size):
 
 if __name__ == "__main__":
     os.makedirs(OUT, exist_ok=True)
-    for s in (180, 512):
+    # Tailles par défaut : icônes de la web app. Exemple pour l'application native : python make_icons.py 1024
+    for s in ([int(a) for a in sys.argv[1:]] or [180, 512]):
         with open(os.path.join(OUT, f"icon-{s}.png"), "wb") as f:
             f.write(make(s))
         print("icons/icon-%d.png" % s)
