@@ -41,7 +41,7 @@ const S = {
   carScreen: readStore('carScreen') === '1',
   streetOn: false, // photos de rue libres (Panoramax) : retirées, trop inégales. Remplacées par Google Street View.
   // Clé Google Maps : celle du fichier config.js (installée par tools/set_key.ps1), sinon celle saisie sur l'appareil.
-  gkey: (window.CAP_CONFIG && window.CAP_CONFIG.googleKey) || readStore('gkey'), gsvStep: -1,
+  gkey: (window.CAP_CONFIG && window.CAP_CONFIG.googleKey) || readStore('gkey'),
   real: readStore('view') !== 'plan', buildingLayer: '', topH: 0,
   raf: 0, lastT: 0, lastUi: 0, watchId: null, wake: null,
   manKey: '',
@@ -1206,8 +1206,9 @@ function stopNav() {
   S.wake = null;
   try { speechSynthesis.cancel(); } catch { /* rien */ }
   vehicle.remove();
-  $('gsv').hidden = true;
+  gsvReset();
   $('gsv-frame').src = 'about:blank';
+  $('gsv-frame-b').src = 'about:blank';
   carStop();
   streetReset();
   $('alert').hidden = true;
@@ -1406,17 +1407,66 @@ function buildRecon() {
 $('recon-btn').addEventListener('click', () => { buildRecon(); $('recon').hidden = false; });
 $('recon-close').addEventListener('click', () => { $('recon').hidden = true; });
 
-// Pendant le guidage, avec la clé : Street View du prochain carrefour, à moins de 300 m (jamais dans un rond-point).
+// Pendant le guidage, avec la clé : la vue Google de ce que le conducteur a devant lui, au moment où il y est.
+// À l'approche d'une manœuvre, trois vues se succèdent, chacune prise à l'endroit exact où se trouve la voiture
+// quand elle s'affiche (220, 120 puis 50 m avant un carrefour ; 600, 350 puis 150 m avant une sortie de voie rapide).
+// La vue suivante est chargée à l'avance dans un cadre caché, pour apparaître sans attente.
+const gsv = { step: -1, stage: -1, front: 'a', ready: -1, loading: -1 };
+const gsvStages = (step) => (/ramp|fork|merge/.test(step.type) ? [600, 350, 150] : [220, 120, 50]);
+const gsvFrame = (which) => $(which === 'a' ? 'gsv-frame' : 'gsv-frame-b');
+
+function gsvReset() {
+  gsv.step = -1; gsv.stage = -1; gsv.ready = -1; gsv.loading = -1;
+  $('gsv').hidden = true;
+}
+
+// Charge la vue de l'étape `k` dans le cadre caché ; `gsv.ready` passe à k quand elle est prête.
+function gsvPreload(next, k) {
+  const stages = gsvStages(next);
+  if (k >= stages.length || gsv.loading === k || gsv.ready === k) return;
+  gsv.loading = k;
+  const back = gsvFrame(gsv.front === 'a' ? 'b' : 'a');
+  const step = gsv.step;
+  back.onload = () => { if (gsv.step === step && gsv.loading === k) { gsv.ready = k; gsv.loading = -1; } };
+  // Le point de vue n'est jamais derrière la voiture : si la manœuvre est plus proche que prévu
+  // (deux virages rapprochés), on prend l'endroit où l'on sera dans deux secondes.
+  const viewpoint = Math.max(S.d + S.speed * 2, next.start - stages[k]);
+  if (viewpoint > next.start - 20) { gsv.loading = -1; return; } // trop près pour qu'une photo soit utile
+  back.src = streetViewEmbedUrl(viewpoint);
+}
+
 function updateGoogleView(i, next, toMan) {
-  const box = $('gsv');
-  const far = next && /ramp|fork|merge/.test(next.type) ? 800 : 300; // plus tôt avant une sortie de voie rapide
-  const want = !!S.gkey && next && isDecision(next) && toMan < far && toMan > 15 && !S.route.steps[i].roundabout;
-  if (!want) { box.hidden = true; S.gsvStep = -1; return; }
-  if (S.gsvStep !== i + 1) {
-    S.gsvStep = i + 1;
-    $('gsv-frame').src = streetViewEmbedUrl(viewpointOf(next));
+  const ok = !!S.gkey && next && isDecision(next) && next.type !== 'arrive' && !S.route.steps[i].roundabout;
+  if (!ok) { if (gsv.step !== -1) gsvReset(); return; }
+  if (gsv.step !== i + 1) { gsvReset(); gsv.step = i + 1; }
+  const stages = gsvStages(next);
+  const lead = Math.max(120, S.speed * (S.sim ? S.simMult : 1) * 6); // avance prise pour charger la vue (6 s de route)
+
+  // Étape dans laquelle on se trouve : la dernière dont on a déjà atteint le point de vue.
+  let now = -1;
+  for (let k = 0; k < stages.length; k++) if (toMan <= stages[k]) now = k;
+  if (toMan < 15) { $('gsv').hidden = true; return; } // on y est : les yeux sur la route
+
+  // Une seule vue est préparée à la fois, pour ne pas s'interrompre soi-même :
+  //  - si on a atteint un point de vue pas encore affiché, c'est lui qu'on charge (ou qu'on affiche s'il est prêt) ;
+  //  - sinon on prépare le point de vue suivant dès qu'il approche.
+  const upcoming = now + 1;
+  if (now > gsv.stage) {
+    if (gsv.ready !== now) gsvPreload(next, now);
+  } else if (upcoming < stages.length && toMan <= stages[upcoming] + lead) {
+    gsvPreload(next, upcoming);
   }
-  box.hidden = false;
+
+  if (now > gsv.stage && gsv.ready === now) {
+    // On arrive au point de vue et l'image est prête : on l'affiche.
+    gsvFrame(gsv.front).classList.remove('on');
+    gsv.front = gsv.front === 'a' ? 'b' : 'a';
+    gsvFrame(gsv.front).classList.add('on');
+    gsv.stage = now;
+    gsv.ready = -1;
+    $('gsv').hidden = false;
+    $('gsv-cap').textContent = 'Devant vous';
+  }
 }
 
 // Réglage de la clé Google Maps.

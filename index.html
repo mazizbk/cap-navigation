@@ -104,7 +104,11 @@
       </div>
       <div id="then" class="panel" hidden></div>
       <!-- Google Street View du prochain carrefour (avec une clé Google). Non cliquable : on ne manipule rien en roulant. -->
-      <div id="gsv" class="panel" hidden><iframe id="gsv-frame" title="Google Street View du prochain carrefour" referrerpolicy="no-referrer-when-downgrade"></iframe></div>
+      <div id="gsv" class="panel" hidden>
+        <iframe id="gsv-frame" class="on" title="Google Street View devant vous" referrerpolicy="no-referrer-when-downgrade"></iframe>
+        <iframe id="gsv-frame-b" title="Google Street View devant vous" referrerpolicy="no-referrer-when-downgrade"></iframe>
+        <div id="gsv-cap"></div>
+      </div>
       <!-- Vraie photo de la route, dans le sens de la marche. Toucher pour agrandir. -->
       <div id="street" class="panel" hidden>
         <div id="street-a" class="street-img"></div>

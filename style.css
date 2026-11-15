@@ -445,7 +445,11 @@ body.navigating .maplibregl-ctrl-bottom-right { bottom: calc(var(--safe-bottom) 
 .recon-text i { color: var(--accent); font-style: normal; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #recon-list .btn { flex: none; text-decoration: none; font-size: 14px; padding: 8px 12px; min-height: 40px; display: grid; place-items: center; }
 #gsv { height: 30vh; min-height: 170px; padding: 0; overflow: hidden; }
-#gsv-frame { display: block; width: 100%; height: 100%; border: 0; pointer-events: none; }
+#gsv { position: relative; }
+#gsv iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; opacity: 0; transition: opacity 0.35s ease; }
+#gsv iframe.on { opacity: 1; }
+#gsv-cap { position: absolute; left: 8px; bottom: 8px; z-index: 2; font-size: 13px; font-weight: 650; color: #fff;
+  background: rgba(14, 20, 32, 0.78); padding: 4px 10px; border-radius: 999px; }
 #arrival { width: auto; padding: 8px 44px 8px 8px; }
 #arrival-sv { display: block; text-decoration: none; text-align: center; }
 #settings { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 14px; color: var(--muted); }
