@@ -55,7 +55,10 @@
       <summary>Photos Google dans l'application</summary>
       <p>Avec une clé Google Maps (service « Maps Embed API »), Street View s'affiche ici même, dans le repérage et à l'approche des carrefours. Sans clé, les boutons « Street View » ouvrent Google dans un nouvel onglet.</p>
       <div class="row">
-        <input id="gkey" type="password" placeholder="Votre clé Google Maps" autocomplete="off" aria-label="Clé Google Maps">
+        <button type="button" id="gkey-paste" class="btn btn-primary">Coller la clé copiée</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <input id="gkey" type="password" placeholder="ou saisissez la clé ici" autocomplete="off" aria-label="Clé Google Maps">
         <button type="button" id="gkey-save" class="btn">Enregistrer</button>
       </div>
       <p id="gkey-state"></p>
@@ -109,6 +112,7 @@
         <button type="button" id="sim-minus" class="icon-btn" aria-label="Ralentir la simulation">−</button>
         <button type="button" id="sim-x" aria-label="Vitesse de la simulation, toucher pour revenir en automatique">Auto</button>
         <button type="button" id="sim-plus" class="icon-btn" aria-label="Accélérer la simulation">+</button>
+        <button type="button" id="sim-mult" aria-label="Accélérer le défilement du temps">×1</button>
       </div>
     </div>
 

@@ -708,7 +708,7 @@ function speak(text, urgent) {
     if (urgent) speechSynthesis.cancel(); // une consigne immédiate passe devant
     // Une consigne de direction n'est jamais abandonnée : elle attend son tour.
     // Seule exception : la simulation à grande vitesse, où les annonces s'empileraient.
-    else if (speechSynthesis.pending && S.sim && S.speed > 30) return;
+    else if (speechSynthesis.pending && S.sim && S.speed * S.simMult > 30) return;
     const u = new SpeechSynthesisUtterance(text);
     u.lang = 'fr-FR';
     u.rate = 1.05;
@@ -828,8 +828,7 @@ async function startNav(sim) {
   $('arrival').hidden = true;
   $('sim-ctl').hidden = !sim;
   S.simPaused = false;
-  S.simMult = 1;
-  S.simKmh = S.simKmh || 0;
+  S.simKmh = S.simKmh || 0; // on garde les réglages du trajet précédent
   simShow();
   $('stop').textContent = 'Arrêter';
   document.body.classList.add('navigating');
@@ -1245,6 +1244,7 @@ function simShow() {
   $('sim-pause').textContent = S.simPaused ? '▶' : '⏸';
   $('sim-minus').disabled = !S.simKmh;
   $('sim-plus').disabled = S.simKmh >= 200;
+  $('sim-mult').textContent = '×' + S.simMult;
 }
 function simStep(dir) {
   // Depuis « Auto », on part de la vitesse actuelle arrondie à la dizaine.
@@ -1257,6 +1257,13 @@ $('sim-minus').addEventListener('click', () => simStep(-1));
 $('sim-plus').addEventListener('click', () => simStep(1));
 $('sim-x').addEventListener('click', () => { S.simKmh = 0; simShow(); }); // toucher la vitesse = retour en Auto
 $('sim-pause').addEventListener('click', () => { S.simPaused = !S.simPaused; simShow(); });
+// Les deux réglages se combinent : la vitesse en km/h est celle du véhicule (compteur, annonces),
+// le multiplicateur fait simplement défiler le temps plus vite (×2 = le trajet passe deux fois plus vite).
+const SIM_MULTS = [1, 2, 5, 10, 20];
+$('sim-mult').addEventListener('click', () => {
+  S.simMult = SIM_MULTS[(SIM_MULTS.indexOf(S.simMult) + 1) % SIM_MULTS.length] || 1;
+  simShow();
+});
 // Quand on revient sur l'application, le verrou d'écran doit être redemandé.
 document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState === 'visible' && S.mode === 'nav') {
@@ -1321,7 +1328,11 @@ function streetViewEmbedUrl(d) {
 }
 
 // Endroit d'où l'on regarde une manœuvre : 35 m avant, ou juste avant l'arrivée.
-const viewpointOf = (step) => (step.type === 'arrive' ? S.route.total - 25 : Math.max(0, step.start - 35));
+const viewpointOf = (step) => {
+  if (step.type === 'arrive') return S.route.total - 25;
+  // Sortie, bretelle ou bifurcation : on recule de 150 m pour avoir les panneaux de direction dans le champ.
+  return Math.max(0, step.start - (/ramp|fork|merge/.test(step.type) ? 150 : 35));
+};
 // Une étape où le conducteur doit choisir (virage, sortie, bretelle, rond-point, arrivée).
 const isDecision = (step) => !step.type.startsWith('exit') && (step.type === 'arrive' || isTurn(step) || /ramp|fork|merge/.test(step.type));
 
@@ -1378,7 +1389,8 @@ $('recon-close').addEventListener('click', () => { $('recon').hidden = true; $('
 // Pendant le guidage, avec la clé : Street View du prochain carrefour, à moins de 300 m (jamais dans un rond-point).
 function updateGoogleView(i, next, toMan) {
   const box = $('gsv');
-  const want = !!S.gkey && next && isDecision(next) && toMan < 300 && toMan > 15 && !S.route.steps[i].roundabout;
+  const far = next && /ramp|fork|merge/.test(next.type) ? 800 : 300; // plus tôt avant une sortie de voie rapide
+  const want = !!S.gkey && next && isDecision(next) && toMan < far && toMan > 15 && !S.route.steps[i].roundabout;
   if (!want) { box.hidden = true; S.gsvStep = -1; return; }
   if (S.gsvStep !== i + 1) {
     S.gsvStep = i + 1;
@@ -1389,11 +1401,24 @@ function updateGoogleView(i, next, toMan) {
 
 // Réglage de la clé Google Maps.
 $('gkey').value = S.gkey;
-$('gkey-save').addEventListener('click', () => {
-  S.gkey = $('gkey').value.trim();
+$('gkey-state').textContent = S.gkey ? 'Une clé est enregistrée sur cet appareil.' : 'Aucune clé enregistrée sur cet appareil.';
+function saveGoogleKey(value) {
+  S.gkey = value.trim();
+  $('gkey').value = S.gkey;
   try { localStorage.setItem('gkey', S.gkey); } catch { /* stockage indisponible */ }
-  $('gkey-state').textContent = S.gkey ? 'Clé enregistrée sur cet appareil.' : 'Clé retirée.';
+  $('gkey-state').textContent = S.gkey ? 'Clé enregistrée sur cet appareil. Ouvrez « Repérer les carrefours » pour voir Street View.' : 'Clé retirée.';
+}
+$('gkey-paste').addEventListener('click', async () => {
+  try {
+    const text = (await navigator.clipboard.readText()).trim();
+    // Une clé Google Maps commence par « AIza » : on évite d'enregistrer par erreur un autre texte copié.
+    if (!/^AIza[\w-]{20,}$/.test(text)) { $('gkey-state').textContent = 'Le presse-papiers ne contient pas une clé Google (elle commence par « AIza »). Copiez-la d\'abord depuis la page Google.'; return; }
+    saveGoogleKey(text);
+  } catch {
+    $('gkey-state').textContent = 'Lecture du presse-papiers refusée : collez la clé dans le champ (appui long → Coller), puis « Enregistrer ».';
+  }
 });
+$('gkey-save').addEventListener('click', () => saveGoogleKey($('gkey').value));
 
 // ---------------------------------------------------------------- diagnostic (pour déboguer sur le téléphone)
 // Sur iPhone on n'a pas de console : ce journal garde les erreurs et l'état du GPS, de la voix et du réseau.
