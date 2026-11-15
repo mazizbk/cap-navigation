@@ -854,6 +854,18 @@ async function startNav(sim) {
   setTimeout(() => { if (S.mode === 'nav') S.raf = requestAnimationFrame(frame); }, 1450);
 }
 
+// Vitesse du véhicule. Certains appareils ne la donnent pas avec la position : on la calcule alors
+// à partir de la distance parcourue entre deux relevés, en lissant pour éviter les à-coups.
+function fixSpeed(p, raw) {
+  const now = performance.now();
+  const prev = S.prevFix;
+  S.prevFix = { raw, t: now };
+  if (Number.isFinite(p.coords.speed) && p.coords.speed !== null) return Math.max(0, p.coords.speed);
+  if (!prev || now - prev.t < 300 || now - prev.t > 10000) return S.speed;
+  const measured = Geo.distance(prev.raw, raw) / ((now - prev.t) / 1000);
+  return S.speed + (Math.min(measured, 60) - S.speed) * 0.5;
+}
+
 function onFix(p) {
   if (S.mode !== 'nav' || !S.route) return;
   S.fixCount = (S.fixCount || 0) + 1;
@@ -869,7 +881,7 @@ function onFix(p) {
   }
   S.gps = {
     along: snap.along, t: performance.now(), off, raw,
-    speed: Number.isFinite(p.coords.speed) && p.coords.speed !== null ? Math.max(0, p.coords.speed) : S.speed,
+    speed: fixSpeed(p, raw),
     heading: Number.isFinite(p.coords.heading) && p.coords.heading !== null ? p.coords.heading : null,
   };
   S.offCount = off ? S.offCount + 1 : 0;
