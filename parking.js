@@ -105,7 +105,9 @@ async function parkingsNear(dest) {
   }
   const rank = { free: 0, unknown: 1, paid: 2 };
   list.sort((a, b) => a.dist - b.dist);
-  list.sort((a, b) => rank[a.fee] - rank[b.fee] || a.dist - b.dist);
+  // Gratuit et ouvert à tous d'abord ; puis gratuit mais réservé aux clients ; puis tarif inconnu ; payant en dernier.
+  const order = (p) => (p.fee === 'free' ? (p.customers ? 1 : 0) : p.fee === 'unknown' ? 2 : 3);
+  list.sort((a, b) => order(a) - order(b) || a.dist - b.dist);
   return { list, feesKnown: !!details };
 }
 

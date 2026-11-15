@@ -175,8 +175,8 @@ const Voice = (() => {
     if (/\b(parking|garer|stationner|stationnement)\b/.test(q)) {
       const best = await openParking();
       if (!best) { speak('Je ne trouve pas de parking public près de l\'arrivée.'); return; }
-      const fee = best.fee === 'free' ? 'gratuit' : best.fee === 'paid' ? 'payant' : 'au tarif non indiqué';
-      speak('Parking ' + fee + (best.name ? ', ' + best.name : '') + ', à ' + walk(best.dist).replace('(', ', ').replace(')', '') + ' de l\'arrivée. Dites « oui » pour y aller.', true);
+      const fee = best.fee === 'free' ? (best.customers ? 'gratuit mais réservé aux clients' : 'gratuit') : best.fee === 'paid' ? 'payant' : 'au tarif non indiqué';
+      speak('Parking ' + fee + (best.name ? ', ' + best.name : '') + ', à ' + walk(best.dist).replace(' (', ', ').replace(')', '') + ' de l\'arrivée. Dites « oui » pour y aller.', true);
       pending = () => goToParking(best);
       expectReply = true;
       return;
