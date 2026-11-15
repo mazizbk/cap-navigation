@@ -24,6 +24,13 @@
   <div id="voice-hud" class="panel" hidden></div>
 
   <!-- Stations-service : la moins chère et la plus proche -->
+  <section id="sug" class="panel" hidden>
+    <header><b>Suggestions <span id="sug-q"></span></b><button id="sug-close" class="icon-btn" aria-label="Fermer">✕</button></header>
+    <p id="sug-info"></p>
+    <ul id="sug-list"></ul>
+    <button type="button" id="sug-gbtn" class="btn">Voir sur Google</button>
+    <iframe id="sug-g" hidden title="Résultats Google Maps (consultation seulement)" referrerpolicy="no-referrer-when-downgrade"></iframe>
+  </section>
   <section id="park" class="panel" hidden>
     <header><b>Se garer à l'arrivée</b><button id="park-close" class="icon-btn" aria-label="Fermer">✕</button></header>
     <p id="park-info"></p>
@@ -223,6 +230,7 @@
   <script src="traffic.js"></script>
   <script src="extras.js"></script>
   <script src="parking.js"></script>
+  <script src="suggest.js"></script>
   <script src="ai.js"></script>
   <script src="voice.js"></script>
 </body>

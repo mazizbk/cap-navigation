@@ -3,7 +3,7 @@
 // avec repli sur le cache hors connexion. Les tuiles et les API ne sont pas mises en cache.
 const CACHE = 'cap-v1';
 const SHELL = [
-  './', 'index.html', 'style.css', 'native.js', 'gvoice.js', 'geo.js', 'app.js', 'hazards.js', 'street.js', 'traffic.js', 'extras.js', 'parking.js', 'ai.js', 'voice.js', 'manifest.webmanifest',
+  './', 'index.html', 'style.css', 'native.js', 'gvoice.js', 'geo.js', 'app.js', 'hazards.js', 'street.js', 'traffic.js', 'extras.js', 'parking.js', 'suggest.js', 'ai.js', 'voice.js', 'manifest.webmanifest',
   'icons/icon-180.png', 'icons/icon-512.png',
   'https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.js',
   'https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.css',

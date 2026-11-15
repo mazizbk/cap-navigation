@@ -134,6 +134,7 @@ const Voice = (() => {
 
   // Avec une clé Claude : la phrase est d'abord comprise par Claude. En cas d'échec (réseau, clé), on revient aux phrases fixes.
   async function run(heard) {
+    if (typeof Sug !== 'undefined' && Sug.pickFromSpeech(plain(heard))) return;
     // Les ordres courts et sans ambiguïté sont exécutés tout de suite, sans attendre Claude (2 secondes de gagnées).
     const quick = /^(stop|arrete|repete|silence|oui|non|ok|d'accord|demarrer|demarre|domicile|travail|parking|trafic|recentre|station|station la (moins chere|plus proche))$/.test(plain(heard));
     if (!quick && typeof AI !== 'undefined' && AI.enabled) {
@@ -141,7 +142,10 @@ const Voice = (() => {
         hud('« ' + heard + ' » …', true);
         const r = await AI.understand(heard, appState());
         diag('Claude a compris : ' + r.commande + (r.lieu ? ' (' + r.lieu + ')' : ''));
-        if (r.commande === 'destination' && r.lieu) return runRules('va à ' + r.lieu);
+        if ((r.commande === 'destination' || r.commande === 'recherche') && (r.lieu || (r.requetes || []).length)) {
+          hud('');
+          return Sug.open(r.lieu || r.requetes[0], r.requetes || []);
+        }
         if (r.commande === 'aucune') { const t = r.reponse || 'Je n\'ai pas compris.'; hud(t); speak(t); return; }
         if (CANON[r.commande]) return runRules(CANON[r.commande]);
       } catch (e) {
@@ -267,19 +271,9 @@ const Voice = (() => {
     }
 
     // « Va à… », « emmène-moi au… », « itinéraire vers… »
-    const m = q.match(/\b(?:va|vas|aller|allons|emmene moi|conduis moi|itineraire|direction|navigue|guide moi|je veux aller)\s+(?:a la |a l'|au |aux |a |vers la |vers le |vers |pour |chez |jusqu'a |jusqu'au )?(.+)$/);
+    const m = q.match(/\b(?:va|vas|aller|allons|emmene moi|conduis moi|itineraire|direction|navigue|guide moi|je veux aller|trouve moi|trouve|cherche moi|cherche|ou est|ou se trouve|je cherche)\s+(?:un |une |des |le |la |les )?(?:a la |a l'|au |aux |a |vers la |vers le |vers |pour |chez |jusqu'a |jusqu'au )?(.+)$/);
     if (m && m[1].length > 2) {
-      const text = m[1];
-      S.to = await findPlace(text); // lieu le plus pertinent près d'ici ; sinon la recherche classique s'en charge
-      $('to').value = S.to ? S.to.label : text;
-      if (nav) {
-        const to = await resolvePlace('to');
-        await navTo(to, 'Itinéraire vers ' + to.label);
-      } else {
-        await planRoute();
-        if (S.route && S.to) { speak('Itinéraire vers ' + S.to.label + ' : ' + $('summary-text').innerText.split('\n')[0].replace(' ·', ',') + '. Dites « démarrer » pour partir.', true); expectReply = true; }
-        else speak('Je n\'ai pas trouvé ' + text + '.');
-      }
+      await Sug.open(m[1]);
       return;
     }
     speak('Je n\'ai pas compris. Dites par exemple : station la moins chère, domicile, ou répète.');
@@ -310,5 +304,5 @@ const Voice = (() => {
   };
   if (cap && cap.Plugins && cap.Plugins.App) cap.Plugins.App.addListener('appUrlOpen', (e) => fromUrl(e.url));
   window.addEventListener('load', () => { if (!fromUrl(location.href)) openListen(); });
-  return { available, native: !!plugin, listen, run, runRules };
+  return { available, native: !!plugin, listen, run, runRules, askAgain() { expectReply = true; } };
 })();
