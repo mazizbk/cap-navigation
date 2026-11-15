@@ -30,11 +30,12 @@ jobs:
           node-version: 22
       - name: Mettre à jour les alertes
         run: node tools/build_data.js
-      - name: Écrire la configuration (clé Google Maps)
+      - name: Écrire la configuration (clés Google Maps et TomTom)
         env:
           GOOGLE_MAPS_KEY: ${{ secrets.GOOGLE_MAPS_KEY }}
+          TOMTOM_KEY: ${{ secrets.TOMTOM_KEY }}
         run: |
-          printf "window.CAP_CONFIG = { googleKey: '%s' };\n" "$GOOGLE_MAPS_KEY" > config.js
+          printf "window.CAP_CONFIG = { googleKey: '%s', tomtomKey: '%s' };\n" "$GOOGLE_MAPS_KEY" "$TOMTOM_KEY" > config.js
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -556,7 +556,7 @@ async function planRoute() {
     destMarker.setLngLat([to.lon, to.lat]).addTo(map);
     fitRoute();
     $('summary-text').innerHTML =
-      '<b>' + fmtDuration(S.route.duration + (S.route.jamDelay || 0)) + '</b> ' + (S.route.trafficKnown ? 'bouchons de Nantes compris' : 'hors bouchons') + ' · ' + fmtDist(S.route.total) + '<br><span>vers ' + escapeHtml(to.label) + '</span>';
+      '<b>' + fmtDuration(S.route.duration + (S.route.jamDelay || 0)) + '</b> ' + (S.route.trafficKnown ? (S.route.trafficSource === 'TomTom' ? 'trafic compris' : 'bouchons de Nantes compris') : 'hors bouchons') + ' · ' + fmtDist(S.route.total) + '<br><span>vers ' + escapeHtml(to.label) + '</span>';
     $('summary-hazards').textContent = '';
     $('summary-traffic').textContent = trafficSummary();
     $('summary').hidden = false;
@@ -919,7 +919,7 @@ async function reroute(from) {
   speak('Vous avez quitté l\'itinéraire. Je recalcule.', true);
   diag('recalcul (écart ' + S.offCount + ', contresens ' + S.wrongCount + ')');
   try {
-    useRoute(await bestRoute({ lon: from[0], lat: from[1] }, S.to));
+    useRoute(await bestRoute({ lon: from[0], lat: from[1] }, S.to, true));
     S.rerouteFailed = false;
   } catch { /* on garde l'ancien itinéraire, nouvel essai au prochain écart */
     S.offCount = 0;
@@ -1519,6 +1519,7 @@ function diagReport() {
     'Écran maintenu allumé : ' + ('wakeLock' in navigator ? (S.wake ? 'actif' : 'disponible') : 'NON GÉRÉ'),
     'Réseau : ' + (navigator.onLine ? 'connecté' : 'HORS LIGNE'),
     'Clé Google : ' + (S.gkey ? 'enregistrée' : 'aucune'),
+    'Trafic TomTom : ' + (ttKey() ? 'clé présente, ' + ttUsage(0) + ' demandes ce mois (limite ' + TT.monthlyCap + ')' : 'pas de clé'),
     'Mode : ' + S.mode + (S.route ? ', trajet de ' + fmtDist(S.route.total) + ', ' + S.hazards.length + ' alertes' : ', pas de trajet'),
     '--- journal ---',
   ];

@@ -104,11 +104,20 @@ async function loadHazards() {
     const start = Geo.pointAt(R.coords, R.cum, j.from);
     list.push({
       id: 'j' + Math.round(j.from), type: 'incident', jam: true, along: j.from, lon: start[0], lat: start[1],
-      icon: '🚗', severe: j.state === 6,
-      title: (j.state === 6 ? 'Route bloquée' : j.state === 5 ? 'Bouchon' : 'Trafic dense') + ' sur ' + fmtDist(len),
-      say: (j.state === 6 ? 'route bloquée' : j.state === 5 ? 'bouchon' : 'trafic dense') + ' sur ' + fmtDistSpoken(len) +
+      icon: j.icon || '🚗', severe: j.state === 6,
+      title: (j.label || (j.state === 6 ? 'Route bloquée' : j.state === 5 ? 'Bouchon' : 'Trafic dense')) + ' sur ' + fmtDist(len),
+      say: lowerFirst(j.label || (j.state === 6 ? 'route bloquée' : j.state === 5 ? 'bouchon' : 'trafic dense')) + ' sur ' + fmtDistSpoken(len) +
         (min >= 1 ? ', environ ' + min + (min > 1 ? ' minutes' : ' minute') + ' de retard' : ''),
       place: min >= 1 ? '+' + min + ' min' : '',
+    });
+  }
+
+  // Alertes ponctuelles du trafic en direct (accident, véhicule en panne, travaux… voir traffic.js).
+  for (const p of R.points || []) {
+    const at = Geo.pointAt(R.coords, R.cum, p.along);
+    list.push({
+      id: 't' + Math.round(p.along) + p.title, type: 'incident', along: p.along, lon: at[0], lat: at[1],
+      icon: p.icon, title: p.title, place: p.road || '', detail: p.detail, severe: p.severe,
     });
   }
 
