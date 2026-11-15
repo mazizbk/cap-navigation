@@ -13,6 +13,7 @@ const Voice = (() => {
   const standalone = window.navigator.standalone === true;
   const available = !!plugin || (!!WebRec && !standalone);
   let listening = false;
+  let pending = null;      // action proposée, en attente d'un « oui »
   let expectReply = false; // la dernière réponse de l'application attend une suite : on réécoutera sans appui
 
   function hud(text, hold) {
@@ -111,7 +112,8 @@ const Voice = (() => {
     stations: 'station', arreter: 'arrête', silence: 'silence', remettre_le_son: 'remets le son', repeter: 'répète', heure_arrivee: 'combien de temps',
     trafic: 'trafic', eviter_peages: 'évite les péages', autoriser_peages: 'avec péage', eviter_autoroutes: 'évite les autoroutes',
     autoriser_autoroutes: 'avec autoroute', demarrer: 'démarrer', recentrer: 'recentre', changer_vue: 'change la vue', autre_trajet: 'autre trajet',
-    enregistrer_domicile: 'enregistre comme domicile', enregistrer_travail: 'enregistre comme travail' };
+    enregistrer_domicile: 'enregistre comme domicile', enregistrer_travail: 'enregistre comme travail',
+    parking: 'parking', oui: 'oui', non: 'non', trajet_economique: 'trajet le plus économique', cout_trajet: 'combien coûte le trajet en carburant' };
 
   function appState() {
     const places = Places.read();
@@ -166,6 +168,31 @@ const Voice = (() => {
     const nav = S.mode === 'nav';
     const places = Places.read();
 
+    // Réponse à une proposition de l'application (« Dites oui pour y aller »).
+    if (/^(oui|ok|d'accord|vas y|y aller|on y va|parfait)\b/.test(q) && pending) { const act = pending; pending = null; await act(); return; }
+    if (/^(non|pas la peine|laisse|annule)\b/.test(q) && pending) { pending = null; speak('D\'accord.'); return; }
+    pending = null;
+    if (/\b(parking|garer|stationner|stationnement)\b/.test(q)) {
+      const best = await openParking();
+      if (!best) { speak('Je ne trouve pas de parking public près de l\'arrivée.'); return; }
+      const fee = best.fee === 'free' ? 'gratuit' : best.fee === 'paid' ? 'payant' : 'au tarif non indiqué';
+      speak('Parking ' + fee + (best.name ? ', ' + best.name : '') + ', à ' + walk(best.dist).replace('(', ', ').replace(')', '') + ' de l\'arrivée. Dites « oui » pour y aller.', true);
+      pending = () => goToParking(best);
+      expectReply = true;
+      return;
+    }
+    if (/\b(economique|economie|moins cher|consomme)\b/.test(q) && /\b(trajet|itineraire|route|chemin)\b/.test(q)) {
+      const eco = cheapestRoute();
+      if (nav || !eco) { speak(nav ? 'Arrêtez d\'abord le guidage pour changer de trajet.' : 'Choisissez d\'abord une destination.'); return; }
+      await chooseRoute(S.alts.indexOf(eco));
+      speak('Trajet le plus économique : ' + $('summary-text').innerText.split('\n')[0].replace(' ·', ',') + ', environ ' + Math.round(Cost.euros(eco)) + ' euros de carburant. Dites « démarrer » pour partir.', true);
+      expectReply = true;
+      return;
+    }
+    if (/\b(coute|cout|prix du trajet|combien.*(carburant|essence))\b/.test(q) && S.route) {
+      speak('Environ ' + Math.round(Cost.euros(S.route)) + ' euros de carburant' + (S.route.toll ? ', péage en plus.' : '.'));
+      return;
+    }
     if (/\benregistre/.test(q) && /\b(domicile|maison|travail|bureau)\b/.test(q)) {
       const home = /\b(domicile|maison)\b/.test(q);
       if (!S.to) { speak('Choisissez d\'abord une destination.'); return; }
@@ -190,8 +217,9 @@ const Voice = (() => {
 
     if (/\b(station|essence|carburant|plein|sans plomb)\b/.test(q)) {
       const { stations, onRoute } = await fuelStations();
-      if (!stations.length) { speak('Aucune station avec du sans plomb 95 ' + (onRoute ? 'sur les 60 prochains kilomètres.' : 'à moins de 10 kilomètres.')); return; }
-      const cheapest = stations.reduce((a, b) => (b.price < a.price ? b : a));
+      if (!stations.length) { speak('Aucune station avec du sans plomb 95 ' + (onRoute ? 'sur les 20 prochains kilomètres.' : 'à moins de 10 kilomètres.')); return; }
+      for (const st of stations) st.score = fuelScore(st, onRoute);
+      const cheapest = stations.reduce((a, b) => (b.score < a.score ? b : a));
       const nearest = stations.reduce((a, b) => (b.dist < a.dist ? b : a));
       if (/moins cher/.test(q)) { speak('Station la moins chère, ' + euros(cheapest.price) + ', à ' + fmtDistSpoken(cheapest.dist) + '.', true); await goToStation(cheapest); return; }
       if (/plus (proche|pres)/.test(q)) { speak('Station la plus proche, ' + euros(nearest.price) + ', à ' + fmtDistSpoken(nearest.dist) + '.', true); await goToStation(nearest); return; }

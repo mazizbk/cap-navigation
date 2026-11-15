@@ -36,6 +36,15 @@ jobs:
           TOMTOM_KEY: ${{ secrets.TOMTOM_KEY }}
         run: |
           printf "window.CAP_CONFIG = { googleKey: '%s', tomtomKey: '%s' };\n" "$GOOGLE_MAPS_KEY" "$TOMTOM_KEY" > config.js
+      - name: Reprendre la base des parkings (fabriquée chaque semaine par parkings.yml)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release download donnees -p parkings.zip 2>/dev/null; then
+            unzip -q parkings.zip -d data && rm parkings.zip && ls data/parking | wc -l
+          else
+            echo "Pas encore de base des parkings."
+          fi
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

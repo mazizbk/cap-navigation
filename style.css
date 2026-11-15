@@ -567,3 +567,22 @@ body.listening #mic-btn, body.listening #mic-nav { background: var(--accent); co
 #ai-settings p { margin: 8px 0; }
 #ai-settings .row { display: flex; gap: 8px; }
 #ai-settings input[type=password] { flex: 1; min-width: 0; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: rgba(255,255,255,0.06); color: var(--text); font: inherit; }
+
+/* ---------- parkings et coût du trajet ---------- */
+#park { position: fixed; inset: calc(var(--safe-top) + 12px) 12px calc(var(--safe-bottom) + 12px) 12px; max-width: 520px; z-index: 20;
+  padding: 14px; overflow: auto; background: rgba(14, 20, 32, 0.97); }
+#park header { display: flex; align-items: center; justify-content: space-between; font-size: 20px; }
+#park p { color: var(--muted); font-size: 13px; margin: 4px 0 10px; }
+#park-list { list-style: none; margin: 0; padding: 0; }
+#park-list li { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+#park-list li.fuel-top { background: rgba(25, 211, 181, 0.1); border: 1px solid rgba(25, 211, 181, 0.45); border-radius: 14px; padding: 10px; margin-bottom: 8px; }
+#park-list .btn { flex: none; font-size: 14px; padding: 8px 12px; min-height: 40px; }
+.park-fee { flex: none; width: 78px; font-size: 13px; font-weight: 700; text-align: center; padding: 6px 4px; border-radius: 10px; }
+.park-free { background: rgba(25, 211, 181, 0.2); color: var(--accent); }
+.park-paid { background: rgba(255, 107, 107, 0.16); color: #ff9c9c; }
+.park-unknown { background: rgba(255, 255, 255, 0.08); color: var(--muted); font-weight: 600; font-size: 12px; }
+#park-btn { width: 100%; margin-bottom: 10px; }
+#trip-cost { font-size: 14px; margin: 6px 0 10px; }
+#trip-cost .eco { color: var(--accent); }
+.linklike { appearance: none; background: none; border: 0; padding: 4px 0; color: var(--muted); font: inherit; font-size: 12px; text-decoration: underline; cursor: pointer; text-align: left; }
+.choice .cost { font-size: 12px; color: var(--accent); white-space: nowrap; }

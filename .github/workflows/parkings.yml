@@ -1,0 +1,45 @@
+# Fabrique la base des parkings de France (gratuit / payant) à partir d'OpenStreetMap, une fois par semaine.
+# Le résultat (parkings.zip) est rangé dans la « release » nommée « donnees » ; la mise en ligne (publier.yml) le reprend.
+name: Parkings
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * 1'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/build_parkings.py'
+      - '.github/workflows/parkings.yml'
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  parkings:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Installer osmium
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool
+      - name: Télécharger la France (OpenStreetMap, Geofabrik)
+        run: curl -sSL --fail --retry 3 -o france.osm.pbf https://download.geofabrik.de/europe/france-latest.osm.pbf && ls -la france.osm.pbf
+      - name: Garder les parkings
+        run: |
+          osmium tags-filter france.osm.pbf nwr/amenity=parking -o parkings.osm.pbf
+          rm france.osm.pbf
+          osmium export parkings.osm.pbf -f geojsonseq -o parkings.geojsonseq
+          ls -la parkings.geojsonseq
+      - name: Découper en petits fichiers
+        run: |
+          python3 tools/build_parkings.py parkings.geojsonseq parking
+          zip -qr parkings.zip parking
+          ls -la parkings.zip
+      - name: Ranger le résultat
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view donnees >/dev/null 2>&1 || gh release create donnees --title "Données (parkings)" --notes "Base des parkings de France, fabriquée automatiquement à partir d'OpenStreetMap (© les contributeurs OpenStreetMap, licence ODbL)."
+          gh release upload donnees parkings.zip --clobber
+          gh workflow run publier.yml

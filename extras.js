@@ -63,6 +63,7 @@ function afterPlan() {
   if (S.to) Places.addRecent(S.to);
   $('save-place').hidden = false;
   $('save-note').textContent = '';
+  if (typeof afterPlanCost === 'function') afterPlanCost(); // coût en carburant, bouton « Se garer »
 }
 $('save-home').addEventListener('click', () => { if (S.to) { Places.set('home', S.to); $('save-note').textContent = 'Enregistré comme Domicile.'; } });
 $('save-work').addEventListener('click', () => { if (S.to) { Places.set('work', S.to); $('save-note').textContent = 'Enregistré comme Travail.'; } });
@@ -128,7 +129,7 @@ async function fuelStations() {
   let d0 = 0;
   if (onRoute) {
     d0 = S.d;
-    seg = Geo.slice(S.route.coords, S.route.cum, d0, Math.min(S.route.total, d0 + 60000)); // les 60 prochains km
+    seg = Geo.slice(S.route.coords, S.route.cum, d0, Math.min(S.route.total, d0 + 20000)); // les 20 prochains km : on ne traverse pas la France pour quelques centimes
     segCum = Geo.cumulative(seg);
     let w = 180, s = 90, e = -180, n = -90;
     for (const c of seg) { if (c[0] < w) w = c[0]; if (c[0] > e) e = c[0]; if (c[1] < s) s = c[1]; if (c[1] > n) n = c[1]; }
@@ -167,6 +168,11 @@ async function fuelStations() {
   return { stations: out, onRoute };
 }
 
+function fuelScore(st, onRoute) {
+  const detourKm = (onRoute ? 2 * st.detour : 2 * st.dist) / 1000;
+  return st.price * 40 + detourKm * 0.065 * st.price; // 6,5 L/100 km en ville
+}
+
 async function openFuel() {
   $('fuel').hidden = false;
   $('fuel-info').textContent = 'Recherche des stations…';
@@ -174,10 +180,12 @@ async function openFuel() {
   let data;
   try { data = await fuelStations(); } catch (e) { $('fuel-info').textContent = 'Impossible de lire les prix : ' + e.message; return; }
   const { stations, onRoute } = data;
-  if (!stations.length) { $('fuel-info').textContent = onRoute ? 'Aucune station avec SP95 sur les 60 prochains kilomètres du trajet.' : 'Aucune station avec SP95 à moins de 10 km.'; return; }
-  const cheapest = stations.reduce((a, b) => (b.price < a.price ? b : a));
+  if (!stations.length) { $('fuel-info').textContent = onRoute ? 'Aucune station avec SP95 sur les 20 prochains kilomètres du trajet.' : 'Aucune station avec SP95 à moins de 10 km.'; return; }
+  // « La moins chère » compte le détour : coût d'un plein de 40 L + carburant brûlé pour y aller et revenir sur sa route.
+  for (const st of stations) st.score = fuelScore(st, onRoute);
+  const cheapest = stations.reduce((a, b) => (b.score < a.score ? b : a));
   const nearest = stations.reduce((a, b) => (b.dist < a.dist ? b : a));
-  $('fuel-info').textContent = stations.length + ' stations ' + (onRoute ? 'sur les 60 prochains km du trajet' : 'à moins de 10 km') + '. Prix déclarés par les stations (source : ministère de l\'Économie).';
+  $('fuel-info').textContent = stations.length + ' stations ' + (onRoute ? 'sur les 20 prochains km du trajet' : 'à moins de 10 km') + '. Prix déclarés par les stations (source : ministère de l\'Économie).';
   const euro = (v) => v.toFixed(3).replace('.', ',') + ' €';
   const item = (st, tag) => {
     const li = document.createElement('li');
@@ -196,9 +204,9 @@ async function openFuel() {
     li.appendChild(b);
     $('fuel-list').appendChild(li);
   };
-  item(cheapest, cheapest === nearest ? 'La moins chère et la plus proche' : 'La moins chère');
+  item(cheapest, cheapest === nearest ? 'La moins chère et la plus proche' : 'La moins chère près d’ici');
   if (nearest !== cheapest) item(nearest, 'La plus proche');
-  for (const st of stations.filter((s) => s !== cheapest && s !== nearest).sort((a, b) => a.price - b.price).slice(0, 10)) item(st, '');
+  for (const st of stations.filter((s) => s !== cheapest && s !== nearest).sort((a, b) => a.score - b.score).slice(0, 10)) item(st, '');
 }
 
 async function goToStation(st) {

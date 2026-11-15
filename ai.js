@@ -22,7 +22,7 @@ const AI = (() => {
 
   const COMMANDS = ['destination', 'domicile', 'travail', 'station_moins_chere', 'station_plus_proche', 'stations', 'arreter', 'silence',
     'remettre_le_son', 'repeter', 'heure_arrivee', 'trafic', 'eviter_peages', 'autoriser_peages', 'eviter_autoroutes', 'autoriser_autoroutes',
-    'demarrer', 'recentrer', 'changer_vue', 'autre_trajet', 'enregistrer_domicile', 'enregistrer_travail', 'aucune'];
+    'demarrer', 'recentrer', 'changer_vue', 'autre_trajet', 'enregistrer_domicile', 'enregistrer_travail', 'parking', 'oui', 'non', 'trajet_economique', 'cout_trajet', 'aucune'];
 
   const TOOL = {
     name: 'commande',
@@ -45,6 +45,7 @@ const AI = (() => {
     'On te donne une phrase dictée (la reconnaissance vocale peut l\'avoir déformée) et l\'état de l\'application. Appelle toujours l\'outil « commande », une seule fois.',
     'Choisis la commande qui correspond à ce que le conducteur veut obtenir, même s\'il le dit de façon indirecte : « je n\'ai presque plus d\'essence » veut dire stations ; « ramène-moi » veut dire domicile ; « tais-toi » veut dire silence ; « c\'est quand qu\'on arrive » veut dire heure_arrivee.',
     '« autre_trajet » passe à la variante d\'itinéraire suivante (avant le départ). « changer_vue » bascule entre plan et photo aérienne. « enregistrer_domicile » / « enregistrer_travail » mémorisent la destination affichée.',
+    '« parking » cherche où se garer près de l\'arrivée (gratuit d\'abord). « oui » / « non » répondent à une proposition que l\'application vient de faire. « trajet_economique » choisit la variante qui consomme le moins ; « cout_trajet » dit le coût en carburant.',
     'Pour le carburant : « station_moins_chere » ou « station_plus_proche » seulement si le conducteur a précisé ce critère ; sinon « stations », qui lui présente les deux.',
     'Si la phrase ne demande rien que l\'application sache faire, choisis « aucune » et réponds en une phrase courte, en français, sans liste ni mise en forme, car elle sera lue à voix haute. Si tu ne sais pas, dis-le simplement. Ne donne jamais de conseil qui détourne l\'attention de la route.',
   ].join('\n');

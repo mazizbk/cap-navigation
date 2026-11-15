@@ -24,6 +24,11 @@
   <div id="voice-hud" class="panel" hidden></div>
 
   <!-- Stations-service : la moins chère et la plus proche -->
+  <section id="park" class="panel" hidden>
+    <header><b>Se garer à l'arrivée</b><button id="park-close" class="icon-btn" aria-label="Fermer">✕</button></header>
+    <p id="park-info"></p>
+    <ul id="park-list"></ul>
+  </section>
   <section id="fuel" class="panel" hidden>
     <header><b>Carburant SP95</b><button id="fuel-close" class="icon-btn" aria-label="Fermer">✕</button></header>
     <p id="fuel-info"></p>
@@ -56,11 +61,13 @@
       <div id="summary-text"></div>
       <div id="route-choices" hidden></div>
       <div id="summary-traffic"></div>
+      <div id="trip-cost" hidden></div>
       <div id="summary-hazards"></div>
       <div class="row" id="recon-row">
         <button type="button" id="recon-btn" class="btn">Repérer les carrefours</button>
         <a id="summary-sv" class="btn" target="_blank" rel="noopener">Voir l'arrivée</a>
       </div>
+      <button type="button" id="park-btn" class="btn" hidden>🅿️ Se garer à l'arrivée (gratuit d'abord)</button>
       <div id="save-place" hidden>
         <span>Enregistrer cette destination :</span>
         <button type="button" id="save-home" class="chip">🏠 Domicile</button>
@@ -196,6 +203,7 @@
   <script src="street.js"></script>
   <script src="traffic.js"></script>
   <script src="extras.js"></script>
+  <script src="parking.js"></script>
   <script src="ai.js"></script>
   <script src="voice.js"></script>
 </body>

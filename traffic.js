@@ -222,6 +222,7 @@ function renderRouteChoices() {
     b.addEventListener('click', () => chooseRoute(k));
     box.appendChild(b);
   });
+  if (typeof showTripCost === 'function') showTripCost(); // coût en carburant de chaque trajet
 }
 
 async function chooseRoute(k) {
