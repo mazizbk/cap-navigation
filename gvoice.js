@@ -24,7 +24,7 @@ const GVoice = (() => {
 
   const store = (k) => { try { return localStorage.getItem(k) || ''; } catch { return ''; } };
   const key = () => store('gttsKey') || (window.CAP_CONFIG && window.CAP_CONFIG.gttsKey) || '';
-  const voice = () => store('gttsVoice') || 'fr-FR-Chirp3-HD-Achernar';
+  const voice = () => store('gttsVoice') || 'fr-FR-Chirp3-HD-Achird';
   const on = () => !!key() && store('gttsOn') !== '0' && failures < 5;
   const id = (text) => voice() + '|' + text;
 
