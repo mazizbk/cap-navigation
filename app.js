@@ -819,8 +819,22 @@ function speak(text, urgent, steps) {
   const length = 500 + text.length * 62; // durée approximative de l'annonce
   if (urgent || now > (S.voiceUntil || 0)) { S.voiceUntil = now + length; S.voiceSteps = steps || []; }
   else { S.voiceUntil += length; S.voiceSteps = (S.voiceSteps || []).concat(steps || []); }
-  if (typeof GVoice !== 'undefined' && GVoice.on()) { GVoice.say(text, urgent, () => deviceSpeak(text, urgent), voiceRate()); return; }
+  if (typeof GVoice !== 'undefined' && GVoice.usable()) {
+    // Consigne « maintenant » : 0,6 s au plus ; annonce d'approche : 1,5 s (elle est préparée à l'avance de toute façon).
+    // Autre phrase (réponse, alerte, accueil) : jusqu'à 3 s, pour garder la même voix plutôt que la voix robot.
+    if (urgent) deviceStop();
+    GVoice.say(text, urgent, () => deviceSpeak(text, false), voiceRate(), steps ? (urgent ? 600 : 1500) : 3000, deviceBusy);
+    return;
+  }
   deviceSpeak(text, urgent);
+}
+function deviceBusy() {
+  if (Native && Native.hasVoice) return Native.busy();
+  return 'speechSynthesis' in window && (speechSynthesis.speaking || speechSynthesis.pending);
+}
+function deviceStop() {
+  if (Native && Native.hasVoice) Native.stopVoice();
+  try { speechSynthesis.cancel(); } catch { /* pas de synthèse vocale */ }
 }
 
 // Voix de l'appareil (secours de la voix Google, ou seule voix sans clé).
@@ -896,31 +910,62 @@ function roundSpoken(m) {
 function prefetchStep(k) {
   if (typeof GVoice === 'undefined' || !GVoice.on() || S.prefetched === k) return;
   S.prefetched = k;
-  const next = S.route.steps[k];
-  if (!next || next.type === 'arrive') return;
-  const full = lowerFirst(next.text);
-  const isRing = next.type === 'roundabout' || next.type === 'rotary';
-  const near = clamp(S.speed * 11, 150, 450);
-  const lane = laneAdvice(next.lanes);
-  const texts = [isRing ? 'Prenez la ' + (ORDINAL[next.exit] || next.exit + 'e') + ' sortie' : (next.act || next.text), 'Sortez maintenant.'];
-  for (const d of [near, near - 50, near + 50]) texts.push('Dans ' + roundSpoken(Math.max(50, d)) + ', ' + full + (lane ? '. ' + lane : ''));
+  const texts = [];
+  for (const j of [k, k + 1]) {
+    const st = S.route.steps[j];
+    if (!st || st.type === 'arrive') continue;
+    const ex = exitInfo(j, st);
+    if (ex) { texts.push(...Object.values(exitPhrases(j, st, ex))); continue; }
+    const isRing = st.type === 'roundabout' || st.type === 'rotary';
+    texts.push(isRing ? 'Prenez la ' + (ORDINAL[st.exit] || st.exit + 'e') + ' sortie' : (st.act || st.text));
+    const n = nearDist();
+    for (const d of new Set([n, Math.max(150, n - 50), Math.min(450, n + 50)])) texts.push(nearPhrase(j, d));
+    const follow = S.route.steps[j + 1];
+    if (follow) texts.push('Ensuite, ' + lowerFirst(follow.act || follow.text));
+  }
   GVoice.prefetch(texts.map(sayable));
+}
+// Distance de l'annonce « à l'approche » : environ 11 s avant, arrondie à 50 m (la phrase peut ainsi être préparée à l'avance).
+function nearDist() { return clamp(Math.round((S.speed * 11) / 50) * 50, 150, 450); }
+// Deux manœuvres rapprochées : la seconde est dite avec la première.
+function chainable(k) {
+  const next = S.route.steps[k];
+  const after = S.route.steps[k + 1];
+  return !!(next && after && after.type !== 'arrive' && !after.type.startsWith('exit') && after.modifier !== 'straight' && after.start - next.start < 160 && isTurn(after));
+}
+function nearPhrase(k, dist) {
+  const next = S.route.steps[k];
+  const full = next.type === 'arrive' ? 'vous arrivez à destination' : lowerFirst(next.text);
+  const lane = laneAdvice(next.lanes);
+  let text = 'Dans ' + roundSpoken(dist) + ', ' + full;
+  if (chainable(k)) text += ', puis ' + lowerFirst(S.route.steps[k + 1].act || S.route.steps[k + 1].text);
+  return text + (lane ? '. ' + lane : '');
+}
+function exitPhrases(k, next, ex) {
+  const what = ex.exit ? 'prenez la sortie' + (ex.no ? ' ' + ex.no : '') : lowerFirst(next.act || next.text);
+  const dir = ex.dir ? ', direction ' + ex.dir : '';
+  const lane = laneAdvice(next.lanes) || 'Placez-vous sur la voie de ' + ex.side;
+  return {
+    now: ex.exit ? 'Sortez maintenant, à ' + ex.side : (next.act || next.text),
+    m500: 'Dans 500 mètres, ' + what + '. Voie de ' + ex.side,
+    km2: 'Dans 2 kilomètres, ' + what + dir + '. ' + lane,
+  };
 }
 
 function announce(k, next, toMan) {
   prefetchStep(k);
+  // Le GPS a environ une seconde de retard et la phrase met un instant à partir : on parle d'où l'on sera, pas d'où l'on était.
+  if (!S.sim) toMan -= S.speed * 1.3;
   const done = S.spoken[k] || 0;
   const ex = exitInfo(k, next);
   if (ex) {
-    const what = ex.exit ? 'prenez la sortie' + (ex.no ? ' ' + ex.no : '') : lowerFirst(next.act || next.text);
-    const dir = ex.dir ? ', direction ' + ex.dir : '';
-    const lane = laneAdvice(next.lanes) || 'Placez-vous sur la voie de ' + ex.side;
-    const now = Math.max(30, S.speed * 2.5);
+    const ph = exitPhrases(k, next, ex);
+    const now = Math.max(45, S.speed * 3.5);
     let flag = 0;
     let text = '';
-    if (toMan <= now) { flag = 5; text = ex.exit ? 'Sortez maintenant, à ' + ex.side : (next.act || next.text); }
-    else if (toMan <= 650) { flag = 4; text = 'Dans 500 mètres, ' + what + '. Voie de ' + ex.side; }
-    else if (toMan <= 2300) { flag = 2; text = 'Dans 2 kilomètres, ' + what + dir + '. ' + lane; }
+    if (toMan <= now) { flag = 5; text = ph.now; }
+    else if (toMan <= 650) { flag = 4; text = ph.m500; }
+    else if (toMan <= 2300) { flag = 2; text = ph.km2; }
     else if (toMan > 5000 && !done) { flag = 1; const here = S.route.steps[k - 1]; text = 'Continuez' + (here && here.name ? ' sur ' + here.name : '') + ' pendant ' + fmtDistSpoken(toMan); }
     if (!flag || done >= flag) return;
     S.spoken[k] = flag;
@@ -929,9 +974,9 @@ function announce(k, next, toMan) {
     return;
   }
   // Un simple changement de nom de rue n'est pas une décision : on ne parle pas, pour que les vraies consignes ressortent.
-  if (!isTurn(next) && (next.type === 'new name' || next.type === 'continue')) return;
-  let near = clamp(S.speed * 11, 150, 450);
-  let now = Math.max(25, S.speed * 2.5);
+  if (!isTurn(next) && !/fork|ramp|merge|arrive/.test(next.type)) return; // « continuez tout droit » n'apprend rien
+  let near = nearDist();
+  let now = Math.max(35, S.speed * 3.5);
   // Dans un rond-point, annoncer « dans 70 mètres, sortez » ferait prendre une sortie trop tôt.
   const ring = S.route.steps[k - 1];
   if (ring && ring.roundabout && next.type.startsWith('exit')) {
@@ -967,16 +1012,14 @@ function announce(k, next, toMan) {
       }
       return;
     }
-    text = 'Dans ' + roundSpoken(toMan) + ', ' + full;
+    // Dite à l'heure, la distance est la valeur arrondie préparée à l'avance (même phrase, déjà dans la voix humaine).
+    text = nearPhrase(k, toMan > near - 40 ? near : toMan);
     // Deux manœuvres rapprochées : on prévient de la seconde pour se placer tout de suite.
-    const after = S.route.steps[k + 1];
-    if (after && after.type !== 'arrive' && !after.type.startsWith('exit') && after.modifier !== 'straight' && after.start - next.start < 160 && isTurn(after)) {
-      text += ', puis ' + lowerFirst(after.act || after.text);
+    if (chainable(k)) {
       S.chained = S.chained || {};
       S.chained[k + 1] = true;
       steps = [k, k + 1];
     }
-    if (lane) text += '. ' + lane;
   } else if (near && S.speed > 20 && toMan <= 2100 && toMan > 1200 && /ramp|fork/.test(next.type)) {
     flag = 2; // voie rapide : rappel 2 km avant la sortie
     text = 'Dans ' + roundSpoken(toMan) + ', ' + full + (lane ? '. ' + lane : '');
@@ -1903,12 +1946,12 @@ function updateSpeedLimit() {
   const over = kmh > lim + margin;
   const now = performance.now();
   if (over) S.overSince = S.overSince || now; else S.overSince = 0;
-  const alarm = over && now - S.overSince > 2500; // on ne crie pas pour un dépassement d'une seconde
+  const alarm = over && now - S.overSince > 4000; // on ne crie pas pour un dépassement d'une seconde
   document.body.classList.toggle('overspeed', alarm);
   // Pas de message de vitesse quand une consigne de direction arrive : la direction passe avant (une info à la fois).
   const st = S.route.steps[stepIndexAt(S.d) + 1];
   const busyAhead = st && (st.start - S.d < (exitInfo(stepIndexAt(S.d) + 1, st) ? 2400 : 350));
-  const quiet = busyAhead || voiceBusy() || now - (S.speedSaidAt || -1e9) < 60000;
+  const quiet = busyAhead || voiceBusy() || now - (S.speedSaidAt || -1e9) < 180000;
   if (alarm && !quiet) { S.speedSaidAt = now; speak('Attention, limité à ' + lim + '.'); }
   // Limite plus basse devant (entrée de ville, travaux…) alors qu'on roule plus vite : on prévient à l'avance,
   // environ 12 s avant, une seule fois par changement.

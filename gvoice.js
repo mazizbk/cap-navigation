@@ -17,15 +17,14 @@ const GVoice = (() => {
   const audio = new Audio();
   audio.preload = 'auto';
   let playing = false;
-  let seq = 0;
   let failures = 0;
-  audio.addEventListener('ended', () => { playing = false; });
-  audio.addEventListener('error', () => { playing = false; });
 
   const store = (k) => { try { return localStorage.getItem(k) || ''; } catch { return ''; } };
   const key = () => store('gttsKey') || (window.CAP_CONFIG && window.CAP_CONFIG.gttsKey) || '';
   const voice = () => store('gttsVoice') || 'fr-FR-Chirp3-HD-Achird';
   const on = () => !!key() && store('gttsOn') !== '0' && failures < 5;
+  // Écran verrouillé dans le navigateur (pas l'application) : le son web est coupé par l'iPhone, on laisse la voix du téléphone.
+  const usable = () => on() && (document.visibilityState === 'visible' || (typeof Native !== 'undefined' && !!Native));
   const id = (text) => voice() + '|' + text;
 
   // Une phrase -> URL d'un MP3. Gardé en mémoire et dans le cache de l'appareil (survit au redémarrage).
@@ -61,37 +60,74 @@ const GVoice = (() => {
     try { return await p; } finally { pending.delete(k); }
   }
 
-  function play(url, rate) {
-    audio.src = url;
-    audio.playbackRate = rate || 1;
-    playing = true;
-    return audio.play().catch((e) => { playing = false; throw e; });
+  // ---------- file d'attente : une phrase après l'autre, aucune perdue, aucune coupée (sauf par une consigne urgente)
+  const queue = [];
+  let running = false;
+  let gen = 0;                              // change quand une consigne urgente vide la file
+  let deviceUntil = 0;                      // la voix du téléphone parle (secours) jusqu'à cet instant
+
+  // Joue un clip et attend sa fin (avec une sécurité si l'événement de fin n'arrive jamais).
+  function playClip(url, rate) {
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = () => { if (done) return; done = true; playing = false; audio.removeEventListener('ended', finish); audio.removeEventListener('error', finish); audio.removeEventListener('pause', finish); resolve(true); };
+      audio.src = url;
+      audio.playbackRate = rate || 1;
+      audio.addEventListener('ended', finish);
+      audio.addEventListener('error', finish);
+      audio.addEventListener('pause', finish);
+      playing = true;
+      audio.play().then(() => {
+        const ms = (isFinite(audio.duration) ? audio.duration * 1000 / (rate || 1) : 8000) + 1500;
+        setTimeout(finish, ms);
+      }).catch(() => { done = true; playing = false; resolve(false); });
+    });
+  }
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const withTimeout = (p, ms) => Promise.race([p, sleep(ms).then(() => null)]).catch(() => null);
+
+  async function pump() {
+    if (running) return;
+    running = true;
+    try {
+      while (queue.length) {
+        const it = queue.shift();
+        const g = gen;
+        // La voix du téléphone finit sa phrase avant qu'on enchaîne (pas deux voix en même temps).
+        while (Date.now() < deviceUntil && it.busyDevice()) await sleep(120);
+        if (g !== gen) continue;
+        const k = id(it.text);
+        let url = mem.get(k) || null;
+        if (!url && on()) url = await withTimeout(fetchClip(it.text), it.wait);
+        if (g !== gen) continue;
+        let ok = false;
+        if (url) ok = await playClip(url, it.rate);
+        if (!ok && g === gen) {
+          // Pas prête à temps (ou lecture refusée) : la voix du téléphone dit la phrase, puis on attend qu'elle finisse.
+          deviceUntil = Date.now() + 600 + it.text.length * 75;
+          it.fallback();
+          await sleep(250);
+          while (Date.now() < deviceUntil && it.busyDevice()) await sleep(120);
+        }
+      }
+    } finally { running = false; }
   }
 
-  // Dit `text` avec la voix Google. `fallback` (voix du téléphone) est appelé si ce n'est pas possible à temps.
-  function say(text, urgent, fallback, rate) {
-    const my = ++seq;
-    if (!on() || document.visibilityState !== 'visible' || !navigator.onLine) { fallback(); return; }
-    if (!urgent && playing) {
-      // Une annonce est en cours : on enchaîne à la fin, sans la couper.
-      audio.addEventListener('ended', () => { if (seq === my) say(text, true, fallback, rate); }, { once: true });
-      return;
-    }
-    if (urgent) { audio.pause(); playing = false; }
-    const k = id(text);
-    if (mem.has(k)) { play(mem.get(k), rate).catch(fallback); return; }
-    let done = false;
-    const timer = setTimeout(() => { if (!done) { done = true; fallback(); } }, WAIT);
-    fetchClip(text).then((url) => {
-      if (done || seq !== my) return;          // trop tard : la voix du téléphone a déjà parlé
-      done = true; clearTimeout(timer);
-      play(url, rate).catch(fallback);
-    }).catch(() => { if (!done) { done = true; clearTimeout(timer); fallback(); } });
+  // Dit `text` avec la voix Google. `fallback` : voix du téléphone, si la phrase n'est pas prête à temps.
+  // `wait` : combien de temps on accepte d'attendre la phrase (court pour une consigne, plus long pour une réponse).
+  function say(text, urgent, fallback, rate, wait, busyDevice) {
+    if (!on()) { fallback(); return; }
+    const it = { text, fallback, rate, wait: wait || WAIT, busyDevice: busyDevice || (() => false) };
+    if (urgent) { gen++; queue.length = 0; audio.pause(); playing = false; deviceUntil = 0; }
+    // Une même phrase déjà en attente n'est pas dite deux fois.
+    if (queue.some((q) => q.text === text)) return;
+    queue.push(it);
+    pump();
   }
 
   // Prépare à l'avance des phrases (ignore les erreurs : ce n'est qu'une avance).
   function prefetch(texts) {
-    if (!on() || !navigator.onLine) return;
+    if (!on()) return;
     for (const t of texts) if (t && !mem.has(id(t))) fetchClip(t).catch(() => {});
   }
 
@@ -116,8 +152,9 @@ const GVoice = (() => {
 
   return {
     on, key, voice, say, prefetch, list, unlock,
-    busy() { return playing; },
-    stop() { seq++; audio.pause(); playing = false; },
+    busy() { return playing || running || queue.length > 0; },
+    stop() { gen++; queue.length = 0; audio.pause(); playing = false; },
+    usable,
     setKey(k) { try { if (k) localStorage.setItem('gttsKey', k); else localStorage.removeItem('gttsKey'); } catch { /* stockage indisponible */ } failures = 0; },
     setVoice(v) { try { localStorage.setItem('gttsVoice', v); } catch { /* idem */ } },
   };

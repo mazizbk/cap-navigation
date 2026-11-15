@@ -37,13 +37,9 @@ const Copilot = (() => {
     briefed = true;
     const time = R.viaTomTom ? R.duration : R.duration + (R.jamDelay || 0);
     const delay = Math.round((R.ttDelay || 0) / 60);
-    let s = 'Arrivée prévue vers ' + clock(time) + ', ' + spokenDuration(time) + ' de route';
-    s += delay >= 3 ? ', dont ' + delay + ' minutes de ralentissements.' : ', circulation fluide.';
-    if (R.total > 30000) {
-      const euros = Math.round(Cost.euros(R));
-      s += ' Environ ' + euros + (euros > 1 ? ' euros' : ' euro') + ' de carburant' + (R.toll ? ', péage en plus.' : ', sans péage.');
-    }
-    if (time > 2 * 3600) s += ' Je vous proposerai une pause en route.';
+    // Court : l'heure d'arrivée, et les ralentissements seulement s'ils comptent. Le reste est affiché à l'écran.
+    let s = 'Arrivée vers ' + clock(time) + '.';
+    if (delay >= 5) s += ' ' + delay + ' minutes de ralentissements.';
     return s;
   }
 
@@ -124,9 +120,7 @@ const Copilot = (() => {
     arrivalDone = true;
     const dest = S.resumeTo ? null : (S.finalDest || S.to);
     if (!dest) return;
-    const R = S.route;
-    const left = R.duration * (1 - S.d / R.total);
-    let text = 'Arrivée dans ' + Math.max(1, Math.round(left / 60)) + ' minutes.';
+    let text = '';
     try {
       const { list } = await parkingsNear(dest);
       const p = list[0];
@@ -142,6 +136,8 @@ const Copilot = (() => {
         if (r.said && !/^rien\.?$/i.test(r.said.trim())) text += ' ' + r.said;
       } catch { /* Claude indisponible : on s'en passe */ }
     }
+    text = text.trim();
+    if (!text) return;                        // rien d'utile à dire : on se tait
     const t0 = Date.now();
     while (!roadClear() && Date.now() - t0 < 60000) await new Promise((r) => setTimeout(r, 1000));
     speak(text);

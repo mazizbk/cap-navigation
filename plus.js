@@ -158,7 +158,7 @@ const Plus = (() => {
   function meetingLine(etaMs) {
     const start = new Date(meeting.debut);
     const diff = Math.round((start - etaMs) / 60000);
-    if (diff >= 2) return 'Vous serez en avance de ' + diff + ' minutes pour « ' + meeting.titre + ' ».';
+    if (diff >= 5) return '';                 // large avance : rien à dire
     if (diff >= -1) return 'Vous arriverez juste à l\'heure pour « ' + meeting.titre + ' », à ' + hhmm(start) + '.';
     return 'Attention, environ ' + -diff + ' minutes de retard pour « ' + meeting.titre + ' ».';
   }
