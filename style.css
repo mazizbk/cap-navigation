@@ -797,3 +797,11 @@ body:has(#stopcard:not([hidden])) #alert { display: none; }
 #limit { width: 42px; height: 42px; font-size: 16px; border-width: 4px; }
 /* Bulle de la voix : en bas, sur une ligne, au-dessus de la barre (ne masque plus la consigne) */
 #voice-hud { top: auto; bottom: calc(var(--safe-bottom) + 96px); max-width: calc(100vw - 40px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; padding: 8px 14px; }
+
+/* ---------- guidage : se repérer d'un coup d'œil ---------- */
+#road-now { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--safe-bottom) + 90px); z-index: 5; max-width: calc(100vw - 120px);
+  padding: 5px 12px; border-radius: 999px; background: rgba(14, 20, 32, 0.82); color: #e8edf5; font-size: 13px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+body:not(.navigating) #road-now { display: none; }
+body.has-live #road-now { display: none; }
+.vehicle { filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.55)); }

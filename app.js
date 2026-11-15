@@ -69,8 +69,8 @@ map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bott
 const vehicleEl = document.createElement('div');
 vehicleEl.className = 'vehicle';
 vehicleEl.innerHTML =
-  '<svg viewBox="0 0 48 48" width="48" height="48"><circle cx="24" cy="24" r="22" fill="rgba(25,211,181,.22)"/>' +
-  '<path d="M24 7 L37 38 L24 31 L11 38 Z" fill="#fff" stroke="#0b3d36" stroke-width="2.5" stroke-linejoin="round"/></svg>';
+  '<svg viewBox="0 0 64 64" width="60" height="60"><circle cx="32" cy="32" r="29" fill="rgba(25,211,181,.18)" stroke="rgba(255,255,255,.55)" stroke-width="1.5"/>' +
+  '<path d="M32 9 L49 50 L32 41 L15 50 Z" fill="#19d3b5" stroke="#fff" stroke-width="3.5" stroke-linejoin="round"/></svg>';
 const vehicle = new maplibregl.Marker({ element: vehicleEl, rotationAlignment: 'map', pitchAlignment: 'map' });
 const destMarker = new maplibregl.Marker({ color: '#ff5a4d' });
 const startMarker = new maplibregl.Marker({ color: '#19d3b5', scale: 0.7 });
@@ -172,7 +172,7 @@ function setDriveStyle(on) {
   // Pas de volumes translucides ni d'icônes de commerces pendant qu'on roule.
   map.setPaintProperty(S.buildingLayer, 'fill-extrusion-opacity', on && S.real ? 0 : S.real ? 0.26 : 0.86);
   for (const layer of map.getStyle().layers) {
-    if (layer.type === 'symbol' && /^poi|airport|aerodrome/.test(layer.id)) {
+    if (layer.type === 'symbol' && /^poi|airport|aerodrome|shield/.test(layer.id)) {
       map.setLayoutProperty(layer.id, 'visibility', on ? 'none' : 'visible');
     }
   }
@@ -1376,6 +1376,10 @@ function updateUi(i, next, toMan) {
   setHtml('remaining', fmtDuration(left) + ' · ' + fmtDist(R.total - S.d));
   setHtml('speed', '<b>' + Math.round(S.speed * 3.6) + '</b><span>km/h</span>');
   updateSpeedLimit();
+  const cur = R.steps[i];
+  const roadNow = [cur && cur.ref, cur && cur.name].filter(Boolean).filter((v, k, arr) => arr.indexOf(v) === k).join(' · ');
+  setHtml('road-now', escapeHtml(roadNow));
+  $('road-now').hidden = !roadNow || document.body.classList.contains('has-alert');
   if (typeof Copilot !== 'undefined') Copilot.tick();
 
   // Alertes et bouchons changent pendant qu'on roule : on les relit toutes les 3 minutes,
@@ -1460,6 +1464,7 @@ function arrive() {
 }
 
 function stopNav() {
+  $('road-now').hidden = true;
   $('limit').hidden = true; document.body.classList.remove('overspeed'); S.lastLimit = 0;
   if (S.updateWaiting) setTimeout(() => location.reload(), 300);
   S.mode = 'plan';
