@@ -127,6 +127,8 @@ const Voice = (() => {
       domicile_enregistre: !!places.home,
       travail_enregistre: !!places.work,
       voix_coupee: !!S.muted,
+      compte_google_connecte: GAccount.connected(),
+      contacts_disponibles: GAccount.contactsAvailable(),
       evite_peages: !!S.avoidTolls,
       evite_autoroutes: !!S.avoidMotorways,
     };
@@ -142,6 +144,7 @@ const Voice = (() => {
         hud('« ' + heard + ' » … Claude réfléchit', true);
         const r = await AI.converse(heard, appState(), {
           commande: (name) => (CANON[name] ? runRules(CANON[name]) : null),
+          data: (name, input) => (name === 'agenda' ? GAccount.agenda(input.jours) : name === 'mails' ? GAccount.mails(input.recherche) : GAccount.contact(input.nom)),
           lieux: (requetes, ouvert, near) => { hud(''); return Sug.open(requetes[0], requetes.slice(1), true, ouvert ? 'ouvert' : heard, near); },
         });
         if (r.done) { if (r.said && $('sug').hidden) { hud(r.said); speak(r.said); } return; }
@@ -199,6 +202,15 @@ const Voice = (() => {
     }
     if (/\b(coute|cout|prix du trajet|combien.*(carburant|essence))\b/.test(q) && S.route) {
       speak('Environ ' + Math.max(1, Math.round(Cost.euros(S.route))) + (Cost.euros(S.route) < 1.5 ? ' euro' : ' euros') + ' de carburant' + (S.route.toll ? ', péage en plus.' : '.'));
+      return;
+    }
+    if (/\b(rendez vous|rdv|agenda|prochain rendez)\b/.test(q)) {
+      if (!GAccount.connected()) { speak('Connectez d\'abord votre compte Google dans les réglages.'); return; }
+      const ev = (await GAccount.agenda(7)).find((e) => e.lieu);
+      if (!ev) { speak('Aucun rendez-vous avec une adresse dans les 7 prochains jours.'); return; }
+      const d = new Date(ev.debut);
+      speak(ev.titre + ', ' + d.toLocaleDateString('fr-FR', { weekday: 'long' }) + ' à ' + d.getHours() + ' heures ' + (d.getMinutes() || '') + '.', true);
+      await Sug.open(ev.lieu, [], true, heard);
       return;
     }
     if (/\benregistre/.test(q) && /\b(domicile|maison|travail|bureau)\b/.test(q)) {

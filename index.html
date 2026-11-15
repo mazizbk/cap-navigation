@@ -90,6 +90,12 @@
     </div>
     <p id="status" role="status"></p>
     <p id="app-version"></p>
+    <details id="gacc-settings">
+      <summary>Compte Google (agenda, mails)</summary>
+      <p>Claude peut lire vos prochains rendez-vous et chercher dans vos mails (objet et court extrait seulement), uniquement quand vous le demandez. Lecture seule. Le contenu lu est envoyé à Claude avec votre clé.</p>
+      <button type="button" id="gacc-btn" class="btn">Connecter mon compte Google</button>
+      <p id="gacc-state"></p>
+    </details>
     <details id="voice-settings">
       <summary>Voix du guidage</summary>
       <label class="option"><input type="checkbox" id="voice-on" checked> Voix activée</label>
@@ -232,6 +238,7 @@
   <script src="extras.js"></script>
   <script src="parking.js"></script>
   <script src="suggest.js"></script>
+  <script src="google.js"></script>
   <script src="ai.js"></script>
   <script src="voice.js"></script>
 </body>

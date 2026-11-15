@@ -45,6 +45,8 @@ jobs:
           $P -c "Add :CFBundleURLTypes:0:CFBundleURLName string fr.capnavigation.app" $PLIST
           $P -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" $PLIST
           $P -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string capnav" $PLIST
+          $P -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:1 string com.googleusercontent.apps.717554430786-siugeo6edd3vrghl38j89t906g9h415c" $PLIST
+          $P -c "Add :NSContactsUsageDescription string 'Cap cherche l adresse d un contact quand vous le demandez.'" $PLIST
           $P -c "Add :UIBackgroundModes array" $PLIST
           $P -c "Add :UIBackgroundModes:0 string location" $PLIST
           $P -c "Add :UIBackgroundModes:1 string audio" $PLIST

@@ -626,3 +626,8 @@ body.listening #mic-btn, body.listening #mic-nav { background: var(--accent); co
 .sug-t em.is-unknown { color: var(--muted); font-weight: 600; }
 
 #app-version { margin: 10px 0 0; font-size: 12px; color: var(--muted); text-align: center; }
+
+#gacc-settings { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 14px; color: var(--muted); }
+#gacc-settings summary { cursor: pointer; color: var(--text); }
+#gacc-settings p { margin: 8px 0; }
+#gacc-btn { width: 100%; }
