@@ -456,3 +456,13 @@ body.navigating .maplibregl-ctrl-bottom-right { bottom: calc(var(--safe-bottom) 
   color: var(--text); font: inherit; font-size: 16px; padding: 10px 12px;
 }
 #settings .btn { flex: 1; padding: 10px 8px; font-size: 15px; }
+
+/* ---------- diagnostic ---------- */
+#diag-box { margin-top: 8px; font-size: 14px; color: var(--muted); }
+#diag-box summary { cursor: pointer; color: var(--text); }
+#diag-box p { margin: 8px 0; }
+#diag-box .btn { padding: 10px 8px; font-size: 15px; }
+#diag { margin: 8px 0 0; padding: 10px; max-height: 38vh; overflow: auto; white-space: pre-wrap; word-break: break-word;
+  font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; color: var(--text); background: rgba(0, 0, 0, 0.35); border-radius: 10px;
+  user-select: text; -webkit-user-select: text; }
+#planner { max-height: calc(100vh - var(--safe-top) - var(--safe-bottom) - 24px); overflow: auto; }

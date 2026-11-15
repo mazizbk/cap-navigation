@@ -185,6 +185,7 @@ for (const ev of ['dragstart', 'zoomstart', 'rotatestart', 'pitchstart']) {
 
 // ---------------------------------------------------------------- recherche d'adresse
 function setStatus(msg, isError) {
+  if (isError && msg) diag('message : ' + msg);
   const el = $('status');
   el.textContent = msg || '';
   el.classList.toggle('error', !!isError);
@@ -845,6 +846,7 @@ async function startNav(sim) {
   if (!sim) {
     S.watchId = navigator.geolocation.watchPosition(onFix, (err) => {
       setNavNote(err.code === 1 ? 'Localisation refusée' : 'Signal GPS perdu…');
+      diag('GPS erreur ' + err.code + ' ' + err.message);
     }, { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 });
   }
   S.lastT = 0;
@@ -854,6 +856,8 @@ async function startNav(sim) {
 
 function onFix(p) {
   if (S.mode !== 'nav' || !S.route) return;
+  S.fixCount = (S.fixCount || 0) + 1;
+  S.lastAccuracy = p.coords.accuracy;
   const raw = [p.coords.longitude, p.coords.latitude];
   const snap = Geo.snap(S.route.coords, S.route.cum, raw);
   const tolerance = Math.max(30, (p.coords.accuracy || 0) * 1.5);
@@ -885,6 +889,7 @@ async function reroute(from) {
   S.rerouting = true;
   setNavNote('Recalcul de l\'itinéraire…');
   speak('Vous avez quitté l\'itinéraire. Je recalcule.', true);
+  diag('recalcul (écart ' + S.offCount + ', contresens ' + S.wrongCount + ')');
   try {
     S.route = await fetchRoute({ lon: from[0], lat: from[1] }, S.to);
     S.d = 0;
@@ -1355,6 +1360,47 @@ $('gkey-save').addEventListener('click', () => {
   S.gkey = $('gkey').value.trim();
   try { localStorage.setItem('gkey', S.gkey); } catch { /* stockage indisponible */ }
   $('gkey-state').textContent = S.gkey ? 'Clé enregistrée sur cet appareil.' : 'Clé retirée.';
+});
+
+// ---------------------------------------------------------------- diagnostic (pour déboguer sur le téléphone)
+// Sur iPhone on n'a pas de console : ce journal garde les erreurs et l'état du GPS, de la voix et du réseau.
+// Il s'affiche avec le bouton « Diagnostic » et peut être copié pour être transmis.
+const DIAG = [];
+function diag(msg) {
+  DIAG.push(new Date().toTimeString().slice(0, 8) + ' ' + msg);
+  if (DIAG.length > 200) DIAG.shift();
+}
+window.addEventListener('error', (e) => diag('ERREUR ' + e.message + ' (' + (e.filename || '').split('/').pop() + ':' + e.lineno + ')'));
+window.addEventListener('unhandledrejection', (e) => diag('ERREUR ' + (e.reason && e.reason.message ? e.reason.message : e.reason)));
+window.addEventListener('offline', () => diag('réseau perdu'));
+window.addEventListener('online', () => diag('réseau rétabli'));
+document.addEventListener('visibilitychange', () => diag('écran ' + document.visibilityState));
+
+function diagReport() {
+  const installed = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  const lines = [
+    'Cap — diagnostic du ' + new Date().toLocaleString('fr-FR'),
+    'Appareil : ' + navigator.userAgent,
+    'Écran : ' + window.innerWidth + '×' + window.innerHeight + ', installée : ' + (installed ? 'oui' : 'non'),
+    'Connexion sécurisée (https) : ' + (window.isSecureContext ? 'oui' : 'NON — le GPS sera refusé'),
+    'GPS : ' + ('geolocation' in navigator ? 'disponible' : 'ABSENT') + ', relevés reçus : ' + (S.fixCount || 0) +
+      (S.lastAccuracy ? ', précision ' + Math.round(S.lastAccuracy) + ' m' : ''),
+    'Voix : ' + ('speechSynthesis' in window ? speechSynthesis.getVoices().filter((v) => v.lang.startsWith('fr')).length + ' voix françaises' : 'ABSENTE'),
+    'Écran maintenu allumé : ' + ('wakeLock' in navigator ? (S.wake ? 'actif' : 'disponible') : 'NON GÉRÉ'),
+    'Réseau : ' + (navigator.onLine ? 'connecté' : 'HORS LIGNE'),
+    'Clé Google : ' + (S.gkey ? 'enregistrée' : 'aucune'),
+    'Mode : ' + S.mode + (S.route ? ', trajet de ' + fmtDist(S.route.total) + ', ' + S.hazards.length + ' alertes' : ', pas de trajet'),
+    '--- journal ---',
+  ];
+  return lines.concat(DIAG.length ? DIAG : ['(rien à signaler)']).join('\n');
+}
+$('diag-btn').addEventListener('click', () => {
+  $('diag').textContent = diagReport();
+  $('diag').hidden = false;
+  $('diag-copy').hidden = false;
+});
+$('diag-copy').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(diagReport()); $('diag-copy').textContent = 'Copié'; } catch { $('diag-copy').textContent = 'Copie impossible : sélectionnez le texte'; }
 });
 
 // ---------------------------------------------------------------- application installable
