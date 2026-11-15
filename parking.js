@@ -10,13 +10,13 @@
 // ================================================================= parkings près de l'arrivée
 let dataMap = null; // petite carte invisible, qui sert seulement à lire les tuiles autour de la destination
 
-function tilesAround(lon, lat) {
+function tilesAround(lon, lat, cls = 'parking') {
   return new Promise((resolve) => {
     const done = () => {
       const seen = new Set();
       const out = [];
       for (const f of dataMap.querySourceFeatures('omt', { sourceLayer: 'poi' })) {
-        if (f.properties.class !== 'parking' || !f.geometry || f.geometry.type !== 'Point') continue;
+        if (f.properties.class !== cls || !f.geometry || f.geometry.type !== 'Point') continue;
         const [x, y] = f.geometry.coordinates;
         const id = x.toFixed(5) + ',' + y.toFixed(5);
         if (seen.has(id)) continue;
@@ -229,4 +229,21 @@ async function afterPlanCost() {
   showTripCost();
   const start = S.route && S.route.coords[0];
   if (start && !Cost.priceKnown) { await loadFuelPrice(start[0], start[1]); if (S.route) renderRouteChoices(); }
+}
+
+// ================================================================= position exacte d'une station-service
+// Le fichier officiel des prix donne parfois une position arrondie (à 100 m près, voire de l'autre côté de la rue).
+// Avant de guider vers une station, on la recale sur la station dessinée sur la carte la plus proche (à 300 m au plus).
+async function refineStation(st) {
+  try {
+    const here = [st.lon, st.lat];
+    let best = null;
+    let bestD = 300;
+    for (const p of await tilesAround(st.lon, st.lat, 'fuel')) {
+      const d = Geo.distance(here, [p.lon, p.lat]);
+      if (d < bestD) { bestD = d; best = p; }
+    }
+    if (best) { diag('station recalée de ' + Math.round(bestD) + ' m' + (best.name ? ' (' + best.name + ')' : '')); return { ...st, lon: best.lon, lat: best.lat, brand: best.name || '' }; }
+  } catch { /* on garde la position officielle */ }
+  return st;
 }

@@ -211,7 +211,8 @@ async function openFuel() {
 
 async function goToStation(st) {
   $('fuel').hidden = true;
-  const place = { label: 'Station ' + (st.city || 'service') + ' (' + st.fuel + ')', lon: st.lon, lat: st.lat };
+  if (typeof refineStation === 'function') st = await refineStation(st); // position exacte, d'après la carte
+  const place = { label: 'Station ' + (st.brand ? st.brand + ', ' : '') + (st.city || 'service') + ' (' + st.fuel + ')', lon: st.lon, lat: st.lat };
   if (S.mode === 'nav' && S.pos) {
     // En cours de guidage : on recalcule vers la station. L'ancienne destination reste dans les « récents ».
     S.to = { ...place, full: place.label };

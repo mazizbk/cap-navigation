@@ -134,8 +134,11 @@ const Voice = (() => {
 
   // Avec une clé Claude : la phrase est d'abord comprise par Claude. En cas d'échec (réseau, clé), on revient aux phrases fixes.
   async function run(heard) {
-    if (typeof AI !== 'undefined' && AI.enabled) {
+    // Les ordres courts et sans ambiguïté sont exécutés tout de suite, sans attendre Claude (2 secondes de gagnées).
+    const quick = /^(stop|arrete|repete|silence|oui|non|ok|d'accord|demarrer|demarre|domicile|travail|parking|trafic|recentre|station|station la (moins chere|plus proche))$/.test(plain(heard));
+    if (!quick && typeof AI !== 'undefined' && AI.enabled) {
       try {
+        hud('« ' + heard + ' » …', true);
         const r = await AI.understand(heard, appState());
         diag('Claude a compris : ' + r.commande + (r.lieu ? ' (' + r.lieu + ')' : ''));
         if (r.commande === 'destination' && r.lieu) return runRules('va à ' + r.lieu);
@@ -190,7 +193,7 @@ const Voice = (() => {
       return;
     }
     if (/\b(coute|cout|prix du trajet|combien.*(carburant|essence))\b/.test(q) && S.route) {
-      speak('Environ ' + Math.round(Cost.euros(S.route)) + ' euros de carburant' + (S.route.toll ? ', péage en plus.' : '.'));
+      speak('Environ ' + Math.max(1, Math.round(Cost.euros(S.route))) + (Cost.euros(S.route) < 1.5 ? ' euro' : ' euros') + ' de carburant' + (S.route.toll ? ', péage en plus.' : '.'));
       return;
     }
     if (/\benregistre/.test(q) && /\b(domicile|maison|travail|bureau)\b/.test(q)) {
