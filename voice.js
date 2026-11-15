@@ -146,6 +146,21 @@ const Voice = (() => {
     return runRules(heard);
   }
 
+  // Cherche un lieu dit à voix haute, en privilégiant ce qui est près de la voiture (ou du domicile).
+  async function findPlace(text) {
+    const home = Places.read().home;
+    const c = S.pos ? { lat: S.pos[1], lng: S.pos[0] } : home ? { lat: home.lat, lng: home.lon } : map.getCenter();
+    try {
+      const res = await fetch('https://photon.komoot.io/api/?lang=fr&limit=1&q=' + encodeURIComponent(text) + '&lat=' + c.lat.toFixed(3) + '&lon=' + c.lng.toFixed(3), { signal: AbortSignal.timeout(8000) });
+      const f = res.ok ? ((await res.json()).features || [])[0] : null;
+      if (!f || !f.geometry) return null;
+      const p = f.properties || {};
+      const name = p.name || [p.housenumber, p.street].filter(Boolean).join(' ') || text;
+      const label = [name, p.city].filter(Boolean).join(', ');
+      return { label, full: label, lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1] };
+    } catch { return null; }
+  }
+
   async function runRules(heard) {
     const q = plain(heard);
     const nav = S.mode === 'nav';
@@ -224,14 +239,14 @@ const Voice = (() => {
     const m = q.match(/\b(?:va|vas|aller|allons|emmene moi|conduis moi|itineraire|direction|navigue|guide moi|je veux aller)\s+(?:a la |a l'|au |aux |a |vers la |vers le |vers |pour |chez |jusqu'a |jusqu'au )?(.+)$/);
     if (m && m[1].length > 2) {
       const text = m[1];
-      S.to = null;
-      $('to').value = text;
+      S.to = await findPlace(text); // lieu le plus pertinent près d'ici ; sinon la recherche classique s'en charge
+      $('to').value = S.to ? S.to.label : text;
       if (nav) {
         const to = await resolvePlace('to');
-        await navTo(to, 'Itinéraire vers ' + to.label.split(',')[0]);
+        await navTo(to, 'Itinéraire vers ' + to.label);
       } else {
         await planRoute();
-        if (S.route && S.to) { speak('Itinéraire vers ' + S.to.label.split(',')[0] + ' : ' + $('summary-text').innerText.split('\n')[0].replace(' ·', ',') + '. Dites « démarrer » pour partir.', true); expectReply = true; }
+        if (S.route && S.to) { speak('Itinéraire vers ' + S.to.label + ' : ' + $('summary-text').innerText.split('\n')[0].replace(' ·', ',') + '. Dites « démarrer » pour partir.', true); expectReply = true; }
         else speak('Je n\'ai pas trouvé ' + text + '.');
       }
       return;
