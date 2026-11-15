@@ -41,6 +41,15 @@
       <button type="button" id="gacc-btn" class="btn">Connecter mon compte Google</button>
       <p id="gacc-state"></p>
     </details>
+    <details id="theme-settings">
+      <summary>Affichage jour / nuit</summary>
+      <p>En automatique, la carte s'assombrit du coucher au lever du soleil pour ne pas vous éblouir.</p>
+      <select id="theme-select" aria-label="Mode d'affichage">
+        <option value="auto">Automatique (selon le soleil)</option>
+        <option value="jour">Toujours jour</option>
+        <option value="nuit">Toujours nuit</option>
+      </select>
+    </details>
     <details id="voice-settings">
       <summary>Voix du guidage</summary>
       <label class="option"><input type="checkbox" id="voice-on" checked> Voix activée</label>
@@ -242,6 +251,7 @@
   <script src="street.js"></script>
   <script src="traffic.js"></script>
   <script src="extras.js"></script>
+  <script src="night.js"></script>
   <script src="parking.js"></script>
   <script src="suggest.js"></script>
   <script src="google.js"></script>

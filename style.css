@@ -695,3 +695,11 @@ body.has-route:not(.editing) #status, body.has-route:not(.editing) #results { or
 body.overspeed #limit { animation: limit-pulse 0.8s ease-in-out infinite; }
 body.overspeed #speed b { color: #ff5a5a; }
 @keyframes limit-pulse { 50% { transform: scale(1.15); box-shadow: 0 0 0 6px rgba(227, 38, 46, 0.35); } }
+
+/* ---------- nuit ---------- */
+#theme-select { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--line); background: #131b2b; color: var(--text); font: inherit; font-size: 16px; }
+body.night { background: #0d141f; }
+/* Panneaux encore un peu plus sombres et moins lumineux la nuit. */
+body.night .panel { background: rgba(8, 12, 20, 0.94); }
+body.night #banner #man-dist, body.night #banner #man-text { color: #e8edf5; }
+body.night .btn-primary { filter: brightness(0.85); }

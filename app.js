@@ -170,6 +170,7 @@ function setDriveStyle(on) {
     }
   }
   map.setPaintProperty('route-casing', 'line-color', on ? '#ffffff' : CONFIG.colors.casing);
+  if (typeof Night !== 'undefined' && Night.isOn()) Night.apply(); // la nuit, on réassombrit par-dessus
 }
 
 // Bascule entre la vue réelle (photos aériennes) et le plan dessiné.
@@ -184,6 +185,7 @@ function setRealView(real) {
     ? '#f4f1ea'
     : ['interpolate', ['linear'], ['coalesce', ['get', 'render_height'], 8], 0, '#e9e4dc', 40, '#d5d9e2', 150, '#b9c3d6']);
   map.setPaintProperty(S.buildingLayer, 'fill-extrusion-opacity', real ? 0.26 : 0.86);
+  if (typeof Night !== 'undefined' && Night.isOn()) Night.apply();
 }
 
 function progressGradient(p) {
