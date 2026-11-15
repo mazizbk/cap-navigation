@@ -327,6 +327,18 @@ const Voice = (() => {
         return true;
       }
       if (u.host === 'majordome' || u.searchParams.has('majordome') || hash.has('majordome')) { if (typeof Butler !== 'undefined') Butler.start(); return true; }
+      // Clé de la voix humaine Google (code QR) : capnav://cle?gtts=…  (+ voix=Achird pour choisir la voix)
+      const g = u.searchParams.get('gtts') || hash.get('gtts');
+      if (g && /^AIza[\w-]{30,}$/.test(g) && typeof GVoice !== 'undefined') {
+        GVoice.setKey(g);
+        try { localStorage.setItem('gttsOn', '1'); } catch { /* stockage */ }
+        const vx = u.searchParams.get('voix') || hash.get('voix');
+        if (vx && /^[A-Za-z]+$/.test(vx)) GVoice.setVoice('fr-FR-Chirp3-HD-' + vx);
+        if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+        hud('Voix humaine activée ✓');
+        speak('Bonjour. Voici ma nouvelle voix.', true);
+        return true;
+      }
       const said = u.searchParams.get('dire') || u.searchParams.get('q');
       if (said) { hud('« ' + said + ' »'); run(said).catch(() => {}); return true; }
     } catch { /* adresse illisible */ }
