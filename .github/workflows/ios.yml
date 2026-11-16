@@ -9,6 +9,7 @@ on:
     branches: [main]
     paths:
       - 'ios-app/**'
+      - 'tools/patch_ios_audio.py'
       - '.github/workflows/ios.yml'
 
 permissions:
@@ -31,6 +32,9 @@ jobs:
 
       - name: Créer le projet Xcode
         run: npx cap add ios
+
+      - name: Voix sur le Bluetooth de la voiture
+        run: python3 ../tools/patch_ios_audio.py
 
       - name: Autorisations (localisation, GPS et voix en arrière-plan)
         run: |
