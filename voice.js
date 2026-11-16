@@ -330,6 +330,11 @@ const Voice = (() => {
         speak('Claude est activé.');
         return true;
       }
+      if (u.host === 'garee' || u.searchParams.has('garee') || hash.has('garee')) {
+        const num = (k) => parseFloat(u.searchParams.get(k) || hash.get(k));
+        if (typeof Plus !== 'undefined') Plus.parkHere(num('lat'), num('lon'));
+        return true;
+      }
       if (u.host === 'majordome' || u.searchParams.has('majordome') || hash.has('majordome')) { if (typeof Butler !== 'undefined') Butler.start(); return true; }
       // Clé de la voix humaine Google (code QR) : capnav://cle?gtts=…  (+ voix=Achird pour choisir la voix)
       const g = u.searchParams.get('gtts') || hash.get('gtts');

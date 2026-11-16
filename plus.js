@@ -376,6 +376,29 @@ const Plus = (() => {
     speak(text, true);
   }
 
+  // ---------- 9. voiture garée quand l'iPhone se déconnecte du Bluetooth de la voiture
+  // Lancé par l'automatisation Raccourcis « Bluetooth déconnecté » → capnav://garee (lat/lon facultatifs).
+  async function parkHere(lat, lon) {
+    let pos = (isFinite(lat) && isFinite(lon)) ? [lon, lat] : null;
+    if (!pos && navigator.geolocation) {
+      pos = await new Promise((ok) => navigator.geolocation.getCurrentPosition(
+        (p) => ok(p.coords.accuracy < 150 ? [p.coords.longitude, p.coords.latitude] : null),
+        () => ok(null), { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }));
+    }
+    if (!pos) pos = S.pos;
+    if (!pos) { if (S.mode !== 'nav') speak('Je n’ai pas pu noter où est garée la voiture.'); return false; }
+    let label = '';
+    try {
+      const j = await (await fetch('https://photon.komoot.io/reverse?lon=' + pos[0].toFixed(5) + '&lat=' + pos[1].toFixed(5) + '&lang=fr', { signal: AbortSignal.timeout(4000) })).json();
+      const pr = (j.features && j.features[0] && j.features[0].properties) || {};
+      label = pr.street || pr.name || '';
+    } catch { /* sans réseau : la position suffit */ }
+    try { localStorage.setItem('carParked', JSON.stringify({ lon: pos[0], lat: pos[1], t: Date.now(), label })); } catch { /* stockage indisponible */ }
+    renderCarChip();
+    if (S.mode !== 'nav') speak('Voiture garée' + (label ? ' ' + label : '') + ', c’est noté.');
+    return true;
+  }
+
   let last = 0;
   function tick() {
     tripTick();
@@ -386,5 +409,5 @@ const Plus = (() => {
 
   $('eta')?.addEventListener('click', shareEta);
   renderCarChip();
-  return { trackFix: (raw) => tripTick(raw), habitPhrase, tick, onArrive, hideCard, whereAmI, findCurves, rememberCar, findCar, renderCarChip, renderHabitChip, shareEta, rainAtArrival, onStart, habit, goHabit, findMeeting };
+  return { trackFix: (raw) => tripTick(raw), habitPhrase, tick, onArrive, hideCard, whereAmI, findCurves, rememberCar, parkHere, findCar, renderCarChip, renderHabitChip, shareEta, rainAtArrival, onStart, habit, goHabit, findMeeting };
 })();
