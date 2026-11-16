@@ -54,7 +54,14 @@ const Plus = (() => {
     if (curvesFor !== R) { curvesFor = R; said.clear(); try { curves = findCurves(R); } catch { curves = []; } }
     const v = S.speed;                       // m/s
     if (v < 50 / 3.6) return;                // en ville on roule déjà doucement : rien à dire
-    const ahead = Math.min(450, Math.max(150, v * 9));
+    const ahead = Math.min(450, Math.max(150, Math.round((v * 9) / 50) * 50));
+    const phrase = (k, m) => 'Virage serré à ' + k.side + ' dans ' + roundSpoken(m) + '.';
+    // Virage à moins de 900 m : sa phrase est préparée dans la voix humaine (dite à l'heure, sans attendre le réseau).
+    const soon = curves.find((k) => k.at > S.d && k.at - S.d < 900 && !k.pre);
+    if (soon && typeof GVoice !== 'undefined' && GVoice.on()) {
+      soon.pre = true;
+      GVoice.prefetch([ahead - 50, ahead, ahead + 50].filter((m) => m >= 150 && m <= 450).map((m) => sayable(phrase(soon, m))));
+    }
     const c = curves.find((k) => k.at > S.d + 40 && k.at - S.d < ahead && !said.has(k.at));
     if (!c) return;
     const safe = Math.sqrt(2.5 * c.radius);  // vitesse confortable dans ce virage (accélération latérale 2,5 m/s²)
@@ -64,7 +71,8 @@ const Plus = (() => {
     const next = R.steps[i + 1];
     if (voiceBusy() || (next && next.start - S.d < 300 && next.start > c.at - 100)) return;
     said.add(c.at);
-    speak('Virage serré à ' + c.side + ' dans ' + roundSpoken(c.at - S.d) + '.');
+    const dist = c.at - S.d;
+    speak(phrase(c, dist > ahead - 40 ? ahead : dist), false, []);
   }
 
   // ---------- 2. la voiture garée
@@ -262,7 +270,7 @@ const Plus = (() => {
     const R = S.route;
     logTrip();
     hideCard();
-    if (!S.resumeTo) { trip.t0 = Date.now(); trip.m = 0; trip.last = 0; }
+    if (!S.resumeTo) { trip.t0 = Date.now(); trip.m = 0; trip.lastPos = null; }
     meeting = null; lateSaid = 0; S.etaMs = 0;
     const [t, ev] = await Promise.all([rainAtArrival(R), findMeeting()]);
     S.meeting = null;                         // utilisé pour ce trajet seulement
@@ -275,11 +283,17 @@ const Plus = (() => {
   }
 
   // ---------- 7. arrivée : bilan du trajet, et chemin à pied depuis le parking
-  const trip = { t0: 0, m: 0, last: 0 };
-  function tripTick() {
-    const now = performance.now();
-    if (trip.last && S.mode === 'nav') trip.m += S.speed * Math.min(2, (now - trip.last) / 1000) * (S.sim ? S.simMult || 1 : 1);
-    trip.last = now;
+  const trip = { t0: 0, m: 0, lastPos: null };
+  // Distance parcourue : somme des déplacements entre deux positions. Appelé à chaque image et à chaque position GPS
+  // (celles-ci continuent écran verrouillé), donc le compte reste juste même téléphone en veille.
+  function tripTick(raw) {
+    const pos = raw || S.pos;
+    if (S.mode !== 'nav' || !pos) return;
+    if (trip.lastPos) {
+      const d = Geo.distance(trip.lastPos, pos);
+      if (d < 3000) trip.m += d;               // au-delà : saut de GPS, ignoré
+    }
+    trip.lastPos = pos.slice();
   }
   function card(text, actions) {
     let el = $('arrivecard');
@@ -372,5 +386,5 @@ const Plus = (() => {
 
   $('eta')?.addEventListener('click', shareEta);
   renderCarChip();
-  return { habitPhrase, tick, onArrive, hideCard, whereAmI, findCurves, rememberCar, findCar, renderCarChip, renderHabitChip, shareEta, rainAtArrival, onStart, habit, goHabit, findMeeting };
+  return { trackFix: (raw) => tripTick(raw), habitPhrase, tick, onArrive, hideCard, whereAmI, findCurves, rememberCar, findCar, renderCarChip, renderHabitChip, shareEta, rainAtArrival, onStart, habit, goHabit, findMeeting };
 })();

@@ -70,7 +70,16 @@ const GVoice = (() => {
   function playClip(url, rate) {
     return new Promise((resolve) => {
       let done = false;
-      const finish = () => { if (done) return; done = true; playing = false; audio.removeEventListener('ended', finish); audio.removeEventListener('error', finish); audio.removeEventListener('pause', finish); resolve(true); };
+      const finish = (ok) => {
+        if (done) return;
+        done = true; playing = false; clearTimeout(guard);
+        audio.removeEventListener('ended', finish); audio.removeEventListener('error', finish); audio.removeEventListener('pause', finish);
+        resolve(ok !== false && !(ok && ok.type === 'error')); // erreur de lecture : la voix du téléphone dira la phrase
+      };
+      // Sécurité : si la lecture ne démarre jamais (écran verrouillé, son bloqué), on rend la main au bout de 2,5 s
+      // et la voix du téléphone prend le relais. La voix ne reste jamais « occupée » pour toujours.
+      const guard = setTimeout(() => { if (!started) { audio.pause(); finish(false); } }, 2500);
+      let started = false;
       audio.src = url;
       audio.playbackRate = rate || 1;
       audio.addEventListener('ended', finish);
@@ -78,13 +87,21 @@ const GVoice = (() => {
       audio.addEventListener('pause', finish);
       playing = true;
       audio.play().then(() => {
+        started = true;
         const ms = (isFinite(audio.duration) ? audio.duration * 1000 / (rate || 1) : 8000) + 1500;
-        setTimeout(finish, ms);
-      }).catch(() => { done = true; playing = false; resolve(false); });
+        setTimeout(() => finish(true), ms);
+      }).catch(() => finish(false));
     });
   }
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  const withTimeout = (p, ms) => Promise.race([p, sleep(ms).then(() => null)]).catch(() => null);
+  // Attend la phrase au plus `ms`, et abandonne tout de suite si une consigne urgente arrive entre-temps.
+  const withTimeout = (p, ms, g) => new Promise((resolve) => {
+    let over = false;
+    const end = (v) => { if (!over) { over = true; clearTimeout(t); clearInterval(poll); resolve(v); } };
+    const t = setTimeout(() => end(null), ms);
+    const poll = setInterval(() => { if (g !== gen) end(null); }, 40);
+    p.then(end, () => end(null));
+  });
 
   async function pump() {
     if (running) return;
@@ -98,7 +115,7 @@ const GVoice = (() => {
         if (g !== gen) continue;
         const k = id(it.text);
         let url = mem.get(k) || null;
-        if (!url && on()) url = await withTimeout(fetchClip(it.text), it.wait);
+        if (!url && on()) url = await withTimeout(fetchClip(it.text), it.wait, g);
         if (g !== gen) continue;
         let ok = false;
         if (url) ok = await playClip(url, it.rate);
