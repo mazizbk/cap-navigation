@@ -74,9 +74,9 @@ const Butler = (() => {
 
   // Salutation, puis écoute de la réponse.
   async function start(force) {
-    if (!force && Date.now() - lastAt < 30 * 60000) return; // pas deux accueils en une demi-heure
-    if (!force && get('butlerOn', '1') !== '1') return;
-    if (S.mode === 'nav') return; // déjà en route : pas de bonjour en plein guidage
+    if (!force && Date.now() - lastAt < 30 * 60000) return false; // pas deux accueils en une demi-heure
+    if (!force && get('butlerOn', '1') !== '1') return false;
+    if (S.mode === 'nav') return false; // déjà en route : pas de bonjour en plein guidage
     lastAt = Date.now();
     const h = new Date().getHours();
     const hello = h >= 18 || h < 5 ? 'Bonsoir' : 'Bonjour';
@@ -85,6 +85,7 @@ const Butler = (() => {
     await quiet();
     Voice.onNextAnswer(onMood);
     Voice.listen();
+    return true;
   }
 
   // Réglages

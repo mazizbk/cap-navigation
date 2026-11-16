@@ -311,7 +311,12 @@ const Voice = (() => {
   auto.checked = readStore('autoListen') === '1';
   auto.addEventListener('change', () => { try { localStorage.setItem('autoListen', auto.checked ? '1' : '0'); } catch { /* stockage indisponible */ } });
   let hiddenAt = 0;
-  const openListen = () => { if (auto.checked && available && !listening) setTimeout(() => listen(), 700); };
+  const listenNow = () => { if (auto.checked && available && !listening) setTimeout(() => listen(), 700); };
+  // À l'ouverture de Cap : le majordome accueille (au plus une fois par demi-heure), sinon simple écoute.
+  const openListen = () => {
+    if (typeof Butler === 'undefined' || S.mode === 'nav') { listenNow(); return; }
+    Butler.start().then((greeted) => { if (!greeted) listenNow(); }).catch(listenNow);
+  };
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') hiddenAt = Date.now();
     else if (hiddenAt && Date.now() - hiddenAt > 3000) openListen();
@@ -332,7 +337,7 @@ const Voice = (() => {
       }
       if (u.host === 'garee' || u.searchParams.has('garee') || hash.has('garee')) {
         const num = (k) => parseFloat(u.searchParams.get(k) || hash.get(k));
-        if (typeof Plus !== 'undefined') Plus.parkHere(num('lat'), num('lon'));
+        if (typeof Plus !== 'undefined') Plus.parkHere(num('lat'), num('lon'), num('t'), u.searchParams.has('quiet') || hash.has('quiet'));
         return true;
       }
       if (u.host === 'majordome' || u.searchParams.has('majordome') || hash.has('majordome')) { if (typeof Butler !== 'undefined') Butler.start(); return true; }
