@@ -196,13 +196,14 @@ const Plus = (() => {
     try { localStorage.setItem('tripLog', JSON.stringify(log.slice(-300))); } catch { /* stockage plein */ }
   }
   // À l'arrivée : la durée réelle du trajet est ajoutée au dernier trajet noté (pour comparer avec « d'habitude »).
-  function saveDuration() {
+  function saveDuration(km, eur) {
     if (S.sim || !trip.t0) return;
     const log = readLog();
     const lastT = log[log.length - 1];
     const d = S.finalDest || S.to;
     if (!lastT || !d || Geo.distance([lastT.lon, lastT.lat], [d.lon, d.lat]) > 300 || lastT.t < trip.t0 - 120000) return;
     lastT.dur = Math.round((Date.now() - trip.t0) / 60000);
+    if (km) { lastT.km = Math.round(km * 10) / 10; lastT.eur = Math.round((eur || 0) * 100) / 100; }
     try { localStorage.setItem('tripLog', JSON.stringify(log)); } catch { /* stockage plein */ }
   }
   // Destination habituelle à cette heure-ci (au moins 3 fois, et la plupart du temps), ou null.
@@ -270,7 +271,7 @@ const Plus = (() => {
     const R = S.route;
     logTrip();
     hideCard();
-    if (!S.resumeTo) { trip.t0 = Date.now(); trip.m = 0; trip.lastPos = null; }
+    if (!S.resumeTo) { trip.t0 = Date.now(); trip.m = 0; trip.lastPos = null; drive.hard = 0; drive.v = []; }
     meeting = null; lateSaid = 0; S.etaMs = 0;
     const [t, ev] = await Promise.all([rainAtArrival(R), findMeeting()]);
     S.meeting = null;                         // utilisé pour ce trajet seulement
@@ -284,6 +285,66 @@ const Plus = (() => {
 
   // ---------- 7. arrivée : bilan du trajet, et chemin à pied depuis le parking
   const trip = { t0: 0, m: 0, lastPos: null };
+
+  // ---------- conduite douce : freinages et accélérations brusques (d'après la vitesse GPS)
+  const drive = { v: [], hard: 0, lastHard: 0 };
+  function smoothTick() {
+    if (S.sim || S.mode !== 'nav') return;
+    const now = performance.now();
+    const v = S.speed || 0;
+    drive.v.push([now, v]);
+    while (drive.v.length > 1 && now - drive.v[0][0] > 2500) drive.v.shift();
+    const [t0, v0] = drive.v[0];
+    const dt = (now - t0) / 1000;
+    if (dt < 1.5) return;
+    const a = (v - v0) / dt;                                // m/s²
+    const rough = Math.abs(a) > 3.5 && Math.abs(a) < 9;     // au-delà de 9 : saut de GPS, ignoré
+    if (rough && v0 + v > 8 && now - drive.lastHard > 8000) { drive.hard++; drive.lastHard = now; }
+  }
+  function calmScore(km) {
+    const per10 = (drive.hard / Math.max(km, 3)) * 10;
+    return Math.max(1, Math.min(10, Math.round(10 - per10 * 2)));
+  }
+
+  // ---------- bilan du mois (trajets réels notés à l'arrivée)
+  function monthStats() {
+    const now = new Date();
+    const list = readLog().filter((t) => t.km && new Date(t.t).getMonth() === now.getMonth() && new Date(t.t).getFullYear() === now.getFullYear());
+    const km = list.reduce((s, t) => s + t.km, 0);
+    const min = list.reduce((s, t) => s + (t.dur || 0), 0);
+    const eur = list.reduce((s, t) => s + (t.eur || 0), 0);
+    return { n: list.length, km, min, eur };
+  }
+  function monthLine() {
+    const m = monthStats();
+    if (m.n < 2) return '';
+    return 'Ce mois : ' + Math.round(m.km) + ' km · ' + fmtDuration(m.min * 60) + ' au volant' + (m.eur >= 1 ? ' · ≈ ' + Math.round(m.eur) + ' €' : '');
+  }
+  function monthSay() {
+    const m = monthStats();
+    if (!m.n) { speak('Pas encore de trajet noté ce mois-ci.'); return; }
+    const h = Math.floor(m.min / 60), mn = m.min % 60;
+    const time = (h ? h + (h > 1 ? ' heures ' : ' heure ') : '') + (mn ? mn + ' minutes' : '');
+    speak('Ce mois-ci : ' + m.n + (m.n > 1 ? ' trajets, ' : ' trajet, ') + Math.round(m.km) + ' kilomètres, ' + (time.trim() || 'moins d’une minute') + ' au volant' + (m.eur >= 1 ? ', environ ' + Math.round(m.eur) + ' euros de carburant.' : '.'), true);
+  }
+
+  // ---------- heure de départ pour un rendez-vous (trafic compris, + 5 min pour se garer)
+  async function leaveLine(ev) {
+    if (!S.pos || !ev || !ev.lieu) return '';
+    const job = (async () => {
+      const g = (await geocode(ev.lieu))[0];
+      if (!g) return '';
+      const R = await bestRoute({ lon: S.pos[0], lat: S.pos[1] }, g, true);
+      const min = Math.round((R.viaTomTom ? R.duration : R.duration + (R.jamDelay || 0)) / 60) + 5;
+      const leave = new Date(new Date(ev.debut).getTime() - min * 60000);
+      leave.setMinutes(Math.floor(leave.getMinutes() / 5) * 5);
+      const late = (Date.now() - leave.getTime()) / 60000;
+      if (late > 8) return 'Il faudrait déjà être parti : environ ' + Math.round(late) + ' minutes de retard.';
+      if (late > -5) return 'Il faut partir maintenant.';
+      return 'Il faut partir vers ' + leave.getHours() + ' heures' + (leave.getMinutes() ? ' ' + leave.getMinutes() : '') + '.';
+    })().catch(() => '');
+    return (await Promise.race([job, new Promise((r) => setTimeout(() => r(''), 6000))])) || '';
+  }
   // Distance parcourue : somme des déplacements entre deux positions. Appelé à chaque image et à chaque position GPS
   // (celles-ci continuent écran verrouillé), donc le compte reste juste même téléphone en veille.
   function tripTick(raw) {
@@ -294,6 +355,7 @@ const Plus = (() => {
       if (d < 3000) trip.m += d;               // au-delà : saut de GPS, ignoré
     }
     trip.lastPos = pos.slice();
+    if (raw) smoothTick();
   }
   function card(text, actions) {
     let el = $('arrivecard');
@@ -327,23 +389,27 @@ const Plus = (() => {
   }
   // Appelé par arrive() (arrivée finale, pas une étape).
   function onArrive() {
-    saveDuration();
     const km = trip.m / 1000;
     const min = Math.max(1, Math.round((Date.now() - trip.t0) / 60000));
+    const euros = trip.t0 && km >= 1 ? Cost.litres({ total: trip.m, duration: min * 60 }) * Cost.price : 0;
+    saveDuration(km >= 1 ? km : 0, euros);
     const parts = [];
     if (trip.t0 && km >= 1) {
       parts.push(fmtDist(trip.m) + ' en ' + fmtDuration(min * 60));
       if (km >= 5) {
         parts.push('moyenne ' + Math.round(km / (min / 60)) + ' km/h');
-        const euros = Cost.litres({ total: trip.m, duration: min * 60 }) * Cost.price;
         parts.push('≈ ' + euros.toFixed(euros < 10 ? 1 : 0).replace('.', ',') + ' € de carburant');
       }
     }
+    const extra = [];
+    if (trip.t0 && km >= 3 && !S.sim) extra.push('Conduite calme : ' + calmScore(km) + '/10' + (drive.hard ? ' (' + drive.hard + (drive.hard > 1 ? ' à-coups)' : ' à-coup)') : ''));
+    const month = monthLine();
+    if (month) extra.push(month);
     const dest = S.finalDest;
     const here = S.pos;
     const walkM = dest && here ? Geo.distance(here, [dest.lon, dest.lat]) : 0;
     const actions = [];
-    let text = parts.length ? 'Trajet : ' + parts.join(' · ') : 'Vous êtes arrivé.';
+    let text = (parts.length ? 'Trajet : ' + parts.join(' · ') : 'Vous êtes arrivé.') + (extra.length ? '\n' + extra.join('\n') : '');
     if (walkM > 80) {
       const mins = Math.max(1, Math.round((walkM * 1.3) / 80));
       const name = dest.label.split(',')[0];
@@ -412,5 +478,5 @@ const Plus = (() => {
 
   $('eta')?.addEventListener('click', shareEta);
   renderCarChip();
-  return { trackFix: (raw) => tripTick(raw), habitPhrase, tick, onArrive, hideCard, whereAmI, findCurves, rememberCar, parkHere, findCar, renderCarChip, renderHabitChip, shareEta, rainAtArrival, onStart, habit, goHabit, findMeeting };
+  return { trackFix: (raw) => tripTick(raw), habitPhrase, tick, onArrive, hideCard, whereAmI, findCurves, rememberCar, parkHere, findCar, renderCarChip, renderHabitChip, shareEta, rainAtArrival, onStart, habit, goHabit, findMeeting, leaveLine, monthSay, monthStats, calmScore, _drive: drive };
 })();

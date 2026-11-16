@@ -54,7 +54,8 @@ const Butler = (() => {
     const ev = await todaysMeeting();
     if (ev) {
       const d = new Date(ev.debut);
-      speak(first + ' Vous avez « ' + ev.titre + ' » à ' + d.getHours() + ' heures' + (d.getMinutes() ? ' ' + d.getMinutes() : '') + '. Souhaitez-vous que nous y allions ?', true);
+      const leave = typeof Plus !== 'undefined' ? await Plus.leaveLine(ev) : '';
+      speak(first + ' Vous avez « ' + ev.titre + ' » à ' + d.getHours() + ' heures' + (d.getMinutes() ? ' ' + d.getMinutes() : '') + '. ' + (leave ? leave + ' ' : '') + 'Souhaitez-vous que nous y allions ?', true);
       Voice.setPending(() => { S.meeting = ev; return Sug.open(ev.lieu, [], true, ''); });
       Voice.askAgain();
       return;
