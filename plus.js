@@ -187,6 +187,16 @@ const Plus = (() => {
     log.push({ label: d.label, lon: d.lon, lat: d.lat, t: now.getTime(), wd: now.getDay() % 6 !== 0 ? 1 : 0, h: now.getHours() + now.getMinutes() / 60 });
     try { localStorage.setItem('tripLog', JSON.stringify(log.slice(-300))); } catch { /* stockage plein */ }
   }
+  // À l'arrivée : la durée réelle du trajet est ajoutée au dernier trajet noté (pour comparer avec « d'habitude »).
+  function saveDuration() {
+    if (S.sim || !trip.t0) return;
+    const log = readLog();
+    const lastT = log[log.length - 1];
+    const d = S.finalDest || S.to;
+    if (!lastT || !d || Geo.distance([lastT.lon, lastT.lat], [d.lon, d.lat]) > 300 || lastT.t < trip.t0 - 120000) return;
+    lastT.dur = Math.round((Date.now() - trip.t0) / 60000);
+    try { localStorage.setItem('tripLog', JSON.stringify(log)); } catch { /* stockage plein */ }
+  }
   // Destination habituelle à cette heure-ci (au moins 3 fois, et la plupart du temps), ou null.
   function habit() {
     const now = new Date();
@@ -206,7 +216,24 @@ const Plus = (() => {
     const p = Places.read();
     const near = (x) => x && Geo.distance([x.lon, x.lat], [best.lon, best.lat]) < 150;
     const name = near(p.home) ? 'à la maison' : near(p.work) ? 'au travail' : 'à ' + best.label.split(',')[0];
-    return { place: { label: best.label, lon: best.lon, lat: best.lat }, name };
+    // Durée habituelle : la médiane des trajets complets vers cet endroit.
+    const durs = same.filter((t) => t.dur && Geo.distance([best.lon, best.lat], [t.lon, t.lat]) < 150).map((t) => t.dur).sort((x, y) => x - y);
+    const usual = durs.length >= 2 ? durs[Math.floor(durs.length / 2)] : 0;
+    return { place: { label: best.label, lon: best.lon, lat: best.lat }, name, usual };
+  }
+  // Phrase du majordome : « On va au travail ? 24 minutes ce matin, 8 de plus que d'habitude. »
+  async function habitPhrase(h) {
+    let s = 'On va ' + h.name + ', comme d\'habitude ?';
+    if (!S.pos) return s;
+    try {
+      const R = await Promise.race([bestRoute({ lon: S.pos[0], lat: S.pos[1] }, h.place, true), new Promise((r) => setTimeout(() => r(null), 5000))]);
+      if (!R) return s;
+      const min = Math.round((R.viaTomTom ? R.duration : R.duration + (R.jamDelay || 0)) / 60);
+      const more = h.usual ? min - h.usual : 0;
+      const said = min >= 60 ? Math.floor(min / 60) + (min >= 120 ? ' heures' : ' heure') + (min % 60 ? ' ' + (min % 60) : '') : min + ' minutes';
+      s = 'On va ' + h.name + ' ? ' + said + (more >= 5 ? ', ' + more + ' de plus que d\'habitude.' : h.usual ? ', comme d\'habitude.' : '.');
+    } catch { /* sans réseau : la question simple */ }
+    return s;
   }
   // Oui à « comme d'habitude ? » : on calcule et on part.
   async function goHabit(h) {
@@ -286,6 +313,7 @@ const Plus = (() => {
   }
   // Appelé par arrive() (arrivée finale, pas une étape).
   function onArrive() {
+    saveDuration();
     const km = trip.m / 1000;
     const min = Math.max(1, Math.round((Date.now() - trip.t0) / 60000));
     const parts = [];
@@ -344,5 +372,5 @@ const Plus = (() => {
 
   $('eta')?.addEventListener('click', shareEta);
   renderCarChip();
-  return { tick, onArrive, hideCard, whereAmI, findCurves, rememberCar, findCar, renderCarChip, renderHabitChip, shareEta, rainAtArrival, onStart, habit, goHabit, findMeeting };
+  return { habitPhrase, tick, onArrive, hideCard, whereAmI, findCurves, rememberCar, findCar, renderCarChip, renderHabitChip, shareEta, rainAtArrival, onStart, habit, goHabit, findMeeting };
 })();

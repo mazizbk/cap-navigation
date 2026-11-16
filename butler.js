@@ -62,7 +62,7 @@ const Butler = (() => {
     // 3. Un trajet habituel à cette heure-ci : on le propose (un « oui » suffit pour partir).
     const hab = typeof Plus !== 'undefined' ? Plus.habit() : null;
     if (hab) {
-      speak(first + ' On va ' + hab.name + ', comme d\'habitude ?', true);
+      speak(first + ' ' + await Plus.habitPhrase(hab), true);
       Voice.setPending(() => Plus.goHabit(hab));
       Voice.askAgain();
       return;

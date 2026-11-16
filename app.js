@@ -911,7 +911,8 @@ function prefetchStep(k) {
   if (typeof GVoice === 'undefined' || !GVoice.on() || S.prefetched === k) return;
   S.prefetched = k;
   const texts = [];
-  for (const j of [k, k + 1]) {
+  // Les 4 prochaines manœuvres : la voix reste humaine même dans une zone sans réseau.
+  for (const j of [k, k + 1, k + 2, k + 3]) {
     const st = S.route.steps[j];
     if (!st || st.type === 'arrive') continue;
     const ex = exitInfo(j, st);
