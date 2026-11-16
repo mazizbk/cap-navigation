@@ -235,10 +235,26 @@ function carStart() {
   }
   car.audio.play().catch(() => {});
   if ('mediaSession' in navigator) {
-    for (const action of ['play', 'pause']) {
-      try { navigator.mediaSession.setActionHandler(action, () => car.audio.play().catch(() => {})); } catch { /* non géré */ }
+    // Boutons du volant : « lecture », « suivant » ou « précédent » redisent la consigne ; « pause » coupe la voix.
+    const keepSilence = () => car.audio.play().catch(() => {});
+    const handlers = {
+      play: () => { keepSilence(); carRepeat(); },
+      pause: () => { keepSilence(); GVoice.stop(); deviceStop(); },
+      nexttrack: carRepeat,
+      previoustrack: carRepeat,
+    };
+    for (const [action, fn] of Object.entries(handlers)) {
+      try { navigator.mediaSession.setActionHandler(action, fn); } catch { /* non géré */ }
     }
   }
+}
+
+// Un appui sur le volant redit la consigne, au plus une fois toutes les 2 secondes.
+function carRepeat() {
+  const now = Date.now();
+  if (now - (car.lastPress || 0) < 2000) return;
+  car.lastPress = now;
+  repeatInstruction();
 }
 
 function carShow(title, sub) {

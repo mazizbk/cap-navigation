@@ -42,7 +42,7 @@ const S = {
   spoken: {}, muted: false,
   photo: null, photoShown: false,
   hazards: [], hazardDone: {}, hazardMarkers: [], overAt: 0, // alertes sur le trajet (voir hazards.js)
-  carScreen: readStore('carScreen') === '1',
+  carScreen: readStore('carScreen') !== '0',
   avoidTolls: readStore('avoidTolls') === '1', avoidMotorways: readStore('avoidMotorways') === '1', alts: [],
   muted: readStore('muted') === '1',
   gsvOn: readStore('gsvOn') !== '0', // aperçu photo du prochain carrefour pendant le guidage
