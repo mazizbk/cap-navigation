@@ -68,14 +68,14 @@ final class CarWatch: NSObject, CLLocationManagerDelegate {
     }
 
     private func authorize() {
-        switch lm.authorizationStatus {
+        switch CLLocationManager.authorizationStatus() {
         case .authorizedAlways: lm.startMonitoringSignificantLocationChanges()
         case .authorizedWhenInUse: lm.requestAlwaysAuthorization()
         default: break
         }
     }
 
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) { authorize() }
+    func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) { authorize() }
 
     @objc private func routeChanged() { DispatchQueue.main.async { self.check() } }
 
@@ -109,7 +109,7 @@ final class CarWatch: NSObject, CLLocationManagerDelegate {
     }
 
     private func startTracking() {
-        let st = lm.authorizationStatus
+        let st = CLLocationManager.authorizationStatus()
         guard !tracking, st == .authorizedAlways || st == .authorizedWhenInUse else { return }
         tracking = true
         lm.allowsBackgroundLocationUpdates = true

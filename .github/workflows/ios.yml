@@ -69,7 +69,9 @@ jobs:
         run: |
           xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Release -sdk iphoneos \
             -archivePath build/App.xcarchive archive \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" | tail -40
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" > build.log 2>&1 \
+            || { grep -E "error:" build.log | head -30; exit 1; }
+          tail -5 build.log
 
       - name: Fabriquer le fichier .ipa
         run: |
